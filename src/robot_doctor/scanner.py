@@ -1,0 +1,2418 @@
+#!/usr/bin/env python3
+"""Evidence-backed static analysis for ROS 2 repositories and workspaces."""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import configparser
+import json
+import os
+import re
+import sys
+import xml.etree.ElementTree as ET
+from collections import defaultdict
+from pathlib import Path
+from typing import Any, Iterable, Iterator
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
+    import tomli as tomllib
+
+
+SCHEMA_VERSION = "1.1.0"
+SCANNER_VERSION = "0.4.0"
+IGNORED_DIRECTORY_NAMES = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pycache__",
+    "build",
+    "install",
+    "log",
+    "node_modules",
+}
+IGNORE_MARKERS = {"COLCON_IGNORE", "AMENT_IGNORE"}
+SOURCE_EXTENSIONS = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".py"}
+LAUNCH_SUFFIXES = (".launch.py", ".launch.xml", ".launch.yaml", ".launch.yml", ".launch")
+KNOWN_ROS_IMPORTS = {
+    "ament_index_python",
+    "builtin_interfaces",
+    "geometry_msgs",
+    "launch",
+    "launch_ros",
+    "lifecycle_msgs",
+    "nav_msgs",
+    "rcl_interfaces",
+    "rclcpp",
+    "rclcpp_action",
+    "rclcpp_components",
+    "rclcpp_lifecycle",
+    "rclpy",
+    "rosidl_default_generators",
+    "sensor_msgs",
+    "std_msgs",
+    "std_srvs",
+    "tf2",
+    "tf2_geometry_msgs",
+    "tf2_ros",
+    "trajectory_msgs",
+    "visualization_msgs",
+}
+
+
+def relative(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return path.resolve().as_posix()
+
+
+def read_text(path: Path) -> str:
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def line_number(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
+
+
+def compact_snippet(value: str, limit: int = 180) -> str:
+    result = " ".join(value.strip().split())
+    return result if len(result) <= limit else result[: limit - 1] + "…"
+
+
+def evidence(file: str, line: int | None, extractor: str, snippet: str = "") -> dict[str, Any]:
+    return {
+        "file": file,
+        "line": line,
+        "extractor": extractor,
+        "snippet": compact_snippet(snippet),
+    }
+
+
+def finding(
+    kind: str,
+    name: str | None,
+    type_name: str | None,
+    file: str,
+    line: int | None,
+    extractor: str,
+    snippet: str,
+    *,
+    confidence: float = 0.95,
+    fact_type: str = "detected",
+    resolved: bool = True,
+    **extra: Any,
+) -> dict[str, Any]:
+    item = {
+        "kind": kind,
+        "name": name,
+        "type": type_name,
+        "file": file,
+        "line": line,
+        "fact_type": fact_type,
+        "confidence": round(confidence, 2),
+        "resolved": resolved,
+        "evidence": [evidence(file, line, extractor, snippet)],
+    }
+    item.update(extra)
+    return item
+
+
+def unique_findings(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    result = []
+    for item in items:
+        key = json.dumps(
+            {
+                "kind": item.get("kind"),
+                "name": item.get("name"),
+                "type": item.get("type"),
+                "file": item.get("file"),
+                "line": item.get("line"),
+                "default": item.get("default"),
+                "value": item.get("value"),
+            },
+            sort_keys=True,
+        )
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+    return sorted(result, key=lambda item: (item.get("file") or "", item.get("line") or 0, item.get("kind") or ""))
+
+
+def iter_repository_files(root: Path) -> Iterator[Path]:
+    """Walk source files while honoring colcon artifacts and ignore markers."""
+    if any((root / marker).exists() for marker in IGNORE_MARKERS):
+        return
+    for current, directories, filenames in os.walk(root):
+        current_path = Path(current)
+        if current_path != root and any((current_path / marker).exists() for marker in IGNORE_MARKERS):
+            directories[:] = []
+            continue
+        directories[:] = [
+            name
+            for name in directories
+            if name not in IGNORED_DIRECTORY_NAMES
+            and not any((current_path / name / marker).exists() for marker in IGNORE_MARKERS)
+        ]
+        for filename in filenames:
+            if filename not in IGNORE_MARKERS:
+                yield current_path / filename
+
+
+def parse_package_xml(path: Path, root: Path) -> dict[str, Any]:
+    tree = ET.parse(path)
+    package_node = tree.getroot()
+
+    def text(tag: str) -> str | None:
+        node = package_node.find(tag)
+        return node.text.strip() if node is not None and node.text else None
+
+    dependencies: dict[str, list[str]] = defaultdict(list)
+    for child in package_node:
+        if child.tag == "depend" or child.tag.endswith("_depend"):
+            if child.text:
+                dependencies[child.tag].append(child.text.strip())
+    build_type = None
+    export = package_node.find("export")
+    if export is not None:
+        build_node = export.find("build_type")
+        if build_node is not None and build_node.text:
+            build_type = build_node.text.strip()
+    rel_file = relative(path, root)
+    return {
+        "name": text("name") or path.parent.name,
+        "path": relative(path.parent, root),
+        "version": text("version"),
+        "description": text("description"),
+        "build_type": build_type,
+        "dependencies": {key: sorted(set(values)) for key, values in sorted(dependencies.items())},
+        "fact_type": "detected",
+        "confidence": 1.0,
+        "evidence": [evidence(rel_file, 1, "package_xml", "<package>")],
+    }
+
+
+def discover_packages(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    packages: list[dict[str, Any]] = []
+    parse_issues: list[dict[str, Any]] = []
+    for path in sorted(file for file in iter_repository_files(root) if file.name == "package.xml"):
+        try:
+            packages.append(parse_package_xml(path, root))
+        except ET.ParseError as exc:
+            parse_issues.append(
+                diagnostic(
+                    "RD002",
+                    "error",
+                    "Invalid package.xml",
+                    f"{relative(path, root)} cannot be parsed: {exc}.",
+                    [evidence(relative(path, root), getattr(exc, "position", (None,))[0], "xml_parser", str(exc))],
+                    1.0,
+                )
+            )
+    return sorted(packages, key=lambda item: (item["path"], item["name"])), parse_issues
+
+
+def package_for_path(path: Path, packages: list[dict[str, Any]], root: Path) -> dict[str, Any] | None:
+    rel = relative(path, root)
+    candidates = [item for item in packages if rel == item["path"] or rel.startswith(item["path"] + "/")]
+    return max(candidates, key=lambda item: len(item["path"])) if candidates else None
+
+
+def expression_text(node: ast.AST | None) -> str | None:
+    if node is None:
+        return None
+    try:
+        return ast.unparse(node)
+    except Exception:
+        return None
+
+
+def canonical_ros_type(value: str | None) -> str | None:
+    if not value:
+        return value
+    normalized = value.strip().replace("::", "/")
+    return re.sub(r"\.(msg|srv|action)\.", r"/\1/", normalized)
+
+
+def call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+    if isinstance(node, ast.Call):
+        return call_name(node.func)
+    return ""
+
+
+def evaluate_python_expression(node: ast.AST | None, constants: dict[str, Any]) -> tuple[Any, float, bool]:
+    if node is None:
+        return None, 0.0, True
+    if isinstance(node, ast.Constant):
+        return node.value, 1.0, False
+    if isinstance(node, ast.Name):
+        if node.id in constants:
+            return constants[node.id], 0.92, False
+        return node.id, 0.45, True
+    if isinstance(node, ast.Attribute):
+        return call_name(node), 0.55, True
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        values = [evaluate_python_expression(item, constants) for item in node.elts]
+        return [item[0] for item in values], min((item[1] for item in values), default=1.0), any(item[2] for item in values)
+    if isinstance(node, ast.Dict):
+        result = {}
+        confidences = []
+        dynamic = False
+        for key_node, value_node in zip(node.keys, node.values):
+            key, key_confidence, key_dynamic = evaluate_python_expression(key_node, constants)
+            value, value_confidence, value_dynamic = evaluate_python_expression(value_node, constants)
+            result[str(key)] = value
+            confidences.extend([key_confidence, value_confidence])
+            dynamic = dynamic or key_dynamic or value_dynamic
+        return result, min(confidences, default=0.9), dynamic
+    if isinstance(node, ast.JoinedStr):
+        parts = []
+        for value in node.values:
+            if isinstance(value, ast.Constant):
+                parts.append(str(value.value))
+            elif isinstance(value, ast.FormattedValue):
+                parts.append("{" + (expression_text(value.value) or "dynamic") + "}")
+        return "".join(parts), 0.5, True
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Div)):
+        left, left_confidence, left_dynamic = evaluate_python_expression(node.left, constants)
+        right, right_confidence, right_dynamic = evaluate_python_expression(node.right, constants)
+        separator = "/" if isinstance(node.op, ast.Div) else ""
+        return f"{left}{separator}{right}", min(left_confidence, right_confidence, 0.85), left_dynamic or right_dynamic
+    if isinstance(node, ast.Call):
+        short = call_name(node.func).split(".")[-1]
+        if short == "LaunchConfiguration" and node.args:
+            value, _, _ = evaluate_python_expression(node.args[0], constants)
+            return f"$(var {value})", 0.75, True
+        if short in {"FindPackageShare", "get_package_share_directory"} and node.args:
+            value, _, dynamic = evaluate_python_expression(node.args[0], constants)
+            return f"$(find-pkg-share {value})", 0.8, dynamic
+        if (short == "PathJoinSubstitution" or short.endswith("LaunchDescriptionSource")) and node.args:
+            value, confidence, dynamic = evaluate_python_expression(node.args[0], constants)
+            if isinstance(value, list):
+                return "/".join(str(item).strip("/") for item in value), confidence, dynamic
+            return value, confidence, dynamic
+        if short == "TextSubstitution":
+            keyword = next((item.value for item in node.keywords if item.arg == "text"), None)
+            return evaluate_python_expression(keyword, constants)
+    return expression_text(node), 0.4, True
+
+
+def source_segment(text: str, node: ast.AST) -> str:
+    return ast.get_source_segment(text, node) or expression_text(node) or ""
+
+
+def qos_from_python(node: ast.AST | None, constants: dict[str, Any], profiles: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    if node is None:
+        return None
+    if isinstance(node, ast.Name) and node.id in profiles:
+        return dict(profiles[node.id])
+    raw = expression_text(node) or ""
+    result: dict[str, Any] = {"expression": raw}
+    value, _, dynamic = evaluate_python_expression(node, constants)
+    if isinstance(value, int):
+        result["depth"] = value
+    lowered = raw.lower()
+    if "best_effort" in lowered:
+        result["reliability"] = "best_effort"
+    elif "reliable" in lowered:
+        result["reliability"] = "reliable"
+    if "transient_local" in lowered:
+        result["durability"] = "transient_local"
+    elif "volatile" in lowered:
+        result["durability"] = "volatile"
+    if dynamic:
+        result["dynamic"] = True
+    return result
+
+
+class PythonSourceVisitor(ast.NodeVisitor):
+    def __init__(self, text: str, file: str) -> None:
+        self.text = text
+        self.file = file
+        self.constants: dict[str, Any] = {}
+        self.qos_profiles: dict[str, dict[str, Any]] = {}
+        self.imports: set[str] = set()
+        self.aliases: dict[str, str] = {}
+        self.class_stack: list[tuple[str, bool, bool]] = []
+        self.items: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for name in node.names:
+            root = name.name.split(".")[0]
+            self.imports.add(root)
+            self.aliases[name.asname or root] = name.name
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        module = node.module or ""
+        if module:
+            self.imports.add(module.split(".")[0])
+        for name in node.names:
+            self.aliases[name.asname or name.name] = f"{module}.{name.name}".strip(".")
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        value, _, dynamic = evaluate_python_expression(node.value, self.constants)
+        for target in node.targets:
+            if isinstance(target, ast.Name) and not dynamic and isinstance(value, (str, int, float, bool)):
+                self.constants[target.id] = value
+            if isinstance(target, ast.Name) and isinstance(node.value, ast.Call) and call_name(node.value.func).endswith("QoSProfile"):
+                self.qos_profiles[target.id] = qos_from_python(node.value, self.constants, {}) or {}
+                for keyword in node.value.keywords:
+                    raw = (expression_text(keyword.value) or "").lower()
+                    if keyword.arg == "reliability":
+                        self.qos_profiles[target.id]["reliability"] = "best_effort" if "best_effort" in raw else "reliable" if "reliable" in raw else raw
+                    if keyword.arg == "durability":
+                        self.qos_profiles[target.id]["durability"] = "transient_local" if "transient_local" in raw else "volatile" if "volatile" in raw else raw
+        self.generic_visit(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        bases = " ".join(expression_text(base) or "" for base in node.bases)
+        lifecycle = "LifecycleNode" in bases
+        ros_node = bool(re.search(r"(?<![A-Za-z0-9_])(?:LifecycleNode|Node)(?![A-Za-z0-9_])", bases))
+        self.class_stack.append((node.name, lifecycle, ros_node))
+        self.generic_visit(node)
+        self.class_stack.pop()
+
+    def add_call_finding(
+        self,
+        collection: str,
+        kind: str,
+        node: ast.Call,
+        name_index: int,
+        type_index: int | None,
+        qos_index: int | None = None,
+        default_index: int | None = None,
+        name_keywords: tuple[str, ...] = (),
+        type_keywords: tuple[str, ...] = (),
+        qos_keywords: tuple[str, ...] = (),
+        default_keywords: tuple[str, ...] = (),
+    ) -> None:
+        def argument(index: int | None, keywords: tuple[str, ...]) -> ast.AST | None:
+            if index is not None and len(node.args) > index:
+                return node.args[index]
+            return next((item.value for item in node.keywords if item.arg in keywords), None)
+
+        name_node = argument(name_index, name_keywords)
+        value, confidence, dynamic = evaluate_python_expression(name_node, self.constants)
+        type_node = argument(type_index, type_keywords)
+        type_name = expression_text(type_node)
+        if isinstance(type_node, ast.Name) and type_node.id in self.aliases:
+            type_name = self.aliases[type_node.id]
+        type_name = canonical_ros_type(type_name)
+        extras: dict[str, Any] = {}
+        qos_node = argument(qos_index, qos_keywords)
+        if qos_node is not None:
+            extras["qos"] = qos_from_python(qos_node, self.constants, self.qos_profiles)
+        default_node = argument(default_index, default_keywords)
+        if default_node is not None:
+            default, _, default_dynamic = evaluate_python_expression(default_node, self.constants)
+            extras["default"] = default
+            extras["default_resolved"] = not default_dynamic
+        if self.class_stack:
+            extras["class"] = self.class_stack[-1][0]
+            extras["lifecycle"] = self.class_stack[-1][1]
+        self.items[collection].append(
+            finding(
+                kind,
+                str(value) if value is not None else None,
+                type_name,
+                self.file,
+                node.lineno,
+                "python_ast",
+                source_segment(self.text, node),
+                confidence=confidence,
+                resolved=not dynamic,
+                **extras,
+            )
+        )
+
+    def visit_Call(self, node: ast.Call) -> None:
+        full_name = call_name(node.func)
+        short = full_name.split(".")[-1]
+        resolved_name = self.aliases.get(short, full_name)
+        if short == "create_publisher":
+            self.add_call_finding("publishers", "publisher", node, 1, 0, 2, name_keywords=("topic",), type_keywords=("msg_type",), qos_keywords=("qos_profile",))
+        elif short == "create_subscription":
+            self.add_call_finding("subscriptions", "subscription", node, 1, 0, 3, name_keywords=("topic",), type_keywords=("msg_type",), qos_keywords=("qos_profile",))
+        elif short == "create_service":
+            self.add_call_finding("service_servers", "service_server", node, 1, 0, 3, name_keywords=("srv_name",), type_keywords=("srv_type",), qos_keywords=("qos_profile",))
+        elif short == "create_client" and "action" not in resolved_name.lower():
+            self.add_call_finding("service_clients", "service_client", node, 1, 0, 2, name_keywords=("srv_name",), type_keywords=("srv_type",), qos_keywords=("qos_profile",))
+        elif short == "declare_parameter":
+            self.add_call_finding("declared_parameters", "parameter", node, 0, None, default_index=1, name_keywords=("name",), default_keywords=("value",))
+        elif short in {"ActionServer", "Server"} and "action" in resolved_name.lower():
+            self.add_call_finding("action_servers", "action_server", node, 2, 1, name_keywords=("action_name",), type_keywords=("action_type",))
+        elif short in {"ActionClient", "Client"} and "action" in resolved_name.lower():
+            self.add_call_finding("action_clients", "action_client", node, 2, 1, name_keywords=("action_name",), type_keywords=("action_type",))
+        elif short == "create_node":
+            self.add_call_finding("node_names", "node_name", node, 0, None, name_keywords=("node_name", "name"))
+        elif short == "__init__":
+            owner = call_name(node.func.value) if isinstance(node.func, ast.Attribute) else ""
+            explicit_node_init = owner in {"Node", "LifecycleNode", "rclpy.node.Node", "rclpy.lifecycle.Node"}
+            ros_super_init = owner == "super" and bool(self.class_stack and self.class_stack[-1][2])
+            if explicit_node_init or ros_super_init:
+                self.add_call_finding("node_names", "node_name", node, 0, None, name_keywords=("node_name", "name"))
+        self.generic_visit(node)
+
+
+def scan_python_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, Any]]], set[str], list[dict[str, Any]]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    try:
+        tree = ast.parse(text, filename=rel_file)
+    except SyntaxError as exc:
+        return {}, set(), [
+            diagnostic(
+                "RD003",
+                "warning",
+                "Python source could not be parsed",
+                f"Static extraction skipped {rel_file}: {exc.msg}.",
+                [evidence(rel_file, exc.lineno, "python_ast", exc.text or exc.msg)],
+                1.0,
+            )
+        ]
+    visitor = PythonSourceVisitor(text, rel_file)
+    visitor.visit(tree)
+    return {key: unique_findings(value) for key, value in visitor.items.items()}, visitor.imports, []
+
+
+def extract_call_block(text: str, start: int) -> str:
+    open_paren = text.find("(", start)
+    if open_paren == -1:
+        return ""
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index in range(open_paren, len(text)):
+        character = text[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character in {'"', "'"}:
+            quote = character
+        elif character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return text[start:]
+
+
+def split_arguments(block: str) -> list[str]:
+    start = block.find("(")
+    end = block.rfind(")")
+    content = block[start + 1 : end if end > start else len(block)]
+    arguments: list[str] = []
+    current: list[str] = []
+    depths = {"(": 0, "[": 0, "{": 0, "<": 0}
+    pairs = {")": "(", "]": "[", "}": "{", ">": "<"}
+    quote: str | None = None
+    escaped = False
+    for character in content:
+        if quote:
+            current.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character in {'"', "'"}:
+            quote = character
+            current.append(character)
+        elif character in depths:
+            depths[character] += 1
+            current.append(character)
+        elif character in pairs:
+            depths[pairs[character]] = max(0, depths[pairs[character]] - 1)
+            current.append(character)
+        elif character == "," and not any(depths.values()):
+            arguments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    if current or content.strip():
+        arguments.append("".join(current).strip())
+    return arguments
+
+
+def cpp_value(expression: str | None) -> tuple[str | None, float, bool]:
+    if expression is None:
+        return None, 0.0, True
+    expression = expression.strip()
+    match = re.fullmatch(r'(?:R"\([^)]*\)"|[uULR]*"((?:\\.|[^"\\])*)"|[uUL]*\'((?:\\.|[^\'\\])*)\')', expression)
+    if match:
+        value = next((group for group in match.groups() if group is not None), expression)
+        return value, 1.0, False
+    return compact_snippet(expression), 0.48, True
+
+
+def qos_from_cpp(expression: str | None) -> dict[str, Any] | None:
+    if not expression:
+        return None
+    lowered = expression.lower()
+    result: dict[str, Any] = {"expression": compact_snippet(expression)}
+    depth = re.search(r"(?:qos|keep_last)\s*\(\s*(\d+)\s*\)", lowered)
+    if depth:
+        result["depth"] = int(depth.group(1))
+    if "best_effort" in lowered:
+        result["reliability"] = "best_effort"
+    elif "reliable" in lowered:
+        result["reliability"] = "reliable"
+    if "transient_local" in lowered:
+        result["durability"] = "transient_local"
+    elif "durability_volatile" in lowered or ".volatile" in lowered:
+        result["durability"] = "volatile"
+    return result
+
+
+def scan_cpp_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, Any]]], set[str]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    items: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    class_ranges = parse_cpp_classes(path, root)
+
+    def enclosing_class(offset: int) -> str | None:
+        match = next((item for item in class_ranges if item["body_offset"] <= offset < item["end"]), None)
+        return match["name"] if match else None
+
+    referenced_packages = {match.group(1) for match in re.finditer(r"^\s*#\s*include\s*[<\"]([A-Za-z][A-Za-z0-9_]*)/", text, re.MULTILINE)}
+    patterns = [
+        ("publishers", "publisher", "create_publisher", 0, 1),
+        ("subscriptions", "subscription", "create_subscription", 0, 1),
+        ("service_servers", "service_server", "create_service", 0, None),
+        ("service_clients", "service_client", "create_client", 0, None),
+        ("declared_parameters", "parameter", "declare_parameter", 0, None),
+    ]
+    action_spans: list[tuple[int, int]] = []
+    for match in re.finditer(r"rclcpp_action::create_(server|client)\s*<\s*([^;()]+?)\s*>\s*\(", text):
+        block = extract_call_block(text, match.start())
+        arguments = split_arguments(block)
+        name_expression = arguments[1] if len(arguments) > 1 else None
+        name, confidence, dynamic = cpp_value(name_expression)
+        collection = "action_servers" if match.group(1) == "server" else "action_clients"
+        items[collection].append(
+            finding(
+                "action_server" if match.group(1) == "server" else "action_client",
+                name,
+                canonical_ros_type(compact_snippet(match.group(2))),
+                rel_file,
+                line_number(text, match.start()),
+                "cpp_call_parser",
+                block,
+                confidence=confidence,
+                resolved=not dynamic,
+                class_name=enclosing_class(match.start()),
+            )
+        )
+        action_spans.append((match.start(), match.start() + len(block)))
+    for collection, kind, call, name_index, qos_index in patterns:
+        pattern = re.compile(rf"(?<![A-Za-z0-9_]){call}\s*(?:<\s*([^;()]+?)\s*>)?\s*\(")
+        for match in pattern.finditer(text):
+            if call == "create_client" and any(start <= match.start() <= end for start, end in action_spans):
+                continue
+            if call != "declare_parameter" and not match.group(1):
+                continue
+            block = extract_call_block(text, match.start())
+            arguments = split_arguments(block)
+            name_expression = arguments[name_index] if len(arguments) > name_index else None
+            name, confidence, dynamic = cpp_value(name_expression)
+            extras: dict[str, Any] = {}
+            if qos_index is not None and len(arguments) > qos_index:
+                extras["qos"] = qos_from_cpp(arguments[qos_index])
+            if call == "declare_parameter" and len(arguments) > 1:
+                default, _, default_dynamic = cpp_value(arguments[1])
+                extras.update(default=default, default_resolved=not default_dynamic)
+            items[collection].append(
+                finding(
+                    kind,
+                    name,
+                    canonical_ros_type(compact_snippet(match.group(1))) if match.group(1) else None,
+                    rel_file,
+                    line_number(text, match.start()),
+                    "cpp_call_parser",
+                    block,
+                    confidence=confidence,
+                    resolved=not dynamic,
+                    lifecycle="LifecycleNode" in text or "rclcpp_lifecycle" in text,
+                    class_name=enclosing_class(match.start()),
+                    **extras,
+                )
+            )
+    node_pattern = re.compile(r"(?:(?:rclcpp|rclcpp_lifecycle)::)?(?:Lifecycle)?Node\s*\(\s*([^,\)]+)")
+    for match in node_pattern.finditer(text):
+        name, confidence, dynamic = cpp_value(match.group(1))
+        items["node_names"].append(
+            finding(
+                "node_name",
+                name,
+                "rclcpp_lifecycle" if "LifecycleNode" in match.group(0) else "rclcpp",
+                rel_file,
+                line_number(text, match.start()),
+                "cpp_call_parser",
+                match.group(0),
+                confidence=confidence,
+                resolved=not dynamic,
+                lifecycle="LifecycleNode" in match.group(0),
+                class_name=enclosing_class(match.start()),
+            )
+        )
+    if "TransformBroadcaster" in text or "StaticTransformBroadcaster" in text:
+        for match in re.finditer(r"(?:Static)?TransformBroadcaster", text):
+            items["tf_broadcasters"].append(
+                finding("tf_broadcaster", None, match.group(0), rel_file, line_number(text, match.start()), "cpp_token", match.group(0), confidence=0.85, resolved=False, class_name=enclosing_class(match.start()))
+            )
+    return {key: unique_findings(value) for key, value in items.items()}, referenced_packages
+
+
+def extract_braced_block(text: str, open_brace: int) -> tuple[str, int]:
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for index in range(open_brace, len(text)):
+        character = text[index]
+        if quote:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+            continue
+        if character in {'"', "'"}:
+            quote = character
+        elif character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return text[open_brace : index + 1], index + 1
+    return text[open_brace:], len(text)
+
+
+def cpp_parameter_name(parameter: str) -> str | None:
+    declaration = parameter.split("=", 1)[0].strip()
+    identifiers = re.findall(r"[A-Za-z_][A-Za-z0-9_]*", declaration)
+    return identifiers[-1] if identifiers else None
+
+
+def split_cpp_template_arguments(value: str) -> list[str]:
+    arguments = []
+    current = []
+    depth = 0
+    for character in value:
+        if character == "<":
+            depth += 1
+        elif character == ">":
+            depth = max(0, depth - 1)
+        if character == "," and depth == 0:
+            arguments.append("".join(current).strip())
+            current = []
+        else:
+            current.append(character)
+    if current:
+        arguments.append("".join(current).strip())
+    return arguments
+
+
+def parse_cpp_classes(path: Path, root: Path) -> list[dict[str, Any]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    class_pattern = re.compile(
+        r"(?:template\s*<\s*([^>]+)\s*>\s*)?(?:class|struct)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::\s*public\s+([^\{]+))?\s*\{",
+        re.DOTALL,
+    )
+    classes = []
+    for match in class_pattern.finditer(text):
+        open_brace = text.find("{", match.start())
+        body, end = extract_braced_block(text, open_brace)
+        template_parameters = re.findall(r"(?:typename|class)\s+([A-Za-z_][A-Za-z0-9_]*)", match.group(1) or "")
+        constructors = []
+        constructor_pattern = re.compile(rf"(?:explicit\s+)?\b{re.escape(match.group(2))}\s*\(")
+        for constructor_match in constructor_pattern.finditer(body):
+            signature = extract_call_block(body, constructor_match.start())
+            parameters = [cpp_parameter_name(item) for item in split_arguments(signature)]
+            signature_end = constructor_match.start() + len(signature)
+            body_start = body.find("{", signature_end)
+            declaration_tail = body[signature_end:body_start] if body_start != -1 else ""
+            constructors.append(
+                {
+                    "parameters": parameters,
+                    "initializer": declaration_tail,
+                    "line": line_number(text, open_brace + constructor_match.start()),
+                }
+            )
+        classes.append(
+            {
+                "name": match.group(2),
+                "template_parameters": template_parameters,
+                "bases": match.group(3) or "",
+                "body": body,
+                "body_offset": open_brace,
+                "file": rel_file,
+                "text": text,
+                "constructors": constructors,
+                "end": end,
+            }
+        )
+    return classes
+
+
+def discover_cpp_wrapper_models(paths: list[Path], root: Path) -> tuple[dict[str, dict[str, Any]], set[tuple[str, int]]]:
+    classes = [item for path in paths for item in parse_cpp_classes(path, root)]
+    models: dict[str, dict[str, Any]] = {}
+    factory_locations: set[tuple[str, int]] = set()
+    for class_info in classes:
+        body = class_info["body"]
+        factory_calls: list[tuple[str, str, int, str, int]] = []
+        action_spans = []
+        for match in re.finditer(r"rclcpp_action::create_(server|client)\s*<\s*([^;()]+?)\s*>\s*\(", body):
+            block = extract_call_block(body, match.start())
+            arguments = split_arguments(block)
+            if len(arguments) > 1:
+                collection = "action_servers" if match.group(1) == "server" else "action_clients"
+                kind = "action_server" if match.group(1) == "server" else "action_client"
+                factory_calls.append((collection, kind, 1, match.group(2).strip(), match.start()))
+            action_spans.append((match.start(), match.start() + len(block)))
+        standard_factories = [
+            ("publishers", "publisher", "create_publisher", 0),
+            ("subscriptions", "subscription", "create_subscription", 0),
+            ("service_servers", "service_server", "create_service", 0),
+            ("service_clients", "service_client", "create_client", 0),
+        ]
+        for collection, kind, call, name_index in standard_factories:
+            for match in re.finditer(rf"(?<![A-Za-z0-9_]){call}\s*<\s*([^;()]+?)\s*>\s*\(", body):
+                if call == "create_client" and any(start <= match.start() <= end for start, end in action_spans):
+                    continue
+                block = extract_call_block(body, match.start())
+                arguments = split_arguments(block)
+                if len(arguments) > name_index:
+                    factory_calls.append((collection, kind, name_index, match.group(1).strip(), match.start()))
+        for collection, kind, factory_name_index, factory_type, factory_offset in factory_calls:
+            block = extract_call_block(body, factory_offset)
+            factory_arguments = split_arguments(block)
+            factory_name = factory_arguments[factory_name_index].strip()
+            constructor = next(
+                (
+                    item
+                    for item in class_info["constructors"]
+                    if factory_name in item["parameters"]
+                ),
+                None,
+            )
+            if not constructor:
+                continue
+            type_parameter_index = next(
+                (index for index, parameter in enumerate(class_info["template_parameters"]) if parameter == factory_type),
+                None,
+            )
+            if type_parameter_index is None:
+                continue
+            absolute_line = line_number(class_info["text"], class_info["body_offset"] + factory_offset)
+            models[class_info["name"]] = {
+                "class": class_info["name"],
+                "collection": collection,
+                "kind": kind,
+                "name_index": constructor["parameters"].index(factory_name),
+                "type_parameter_index": type_parameter_index,
+                "file": class_info["file"],
+                "line": absolute_line,
+                "evidence": [evidence(class_info["file"], absolute_line, "cpp_wrapper_factory", block)],
+            }
+            factory_locations.add((class_info["file"], absolute_line))
+    changed = True
+    while changed:
+        changed = False
+        for class_info in classes:
+            if class_info["name"] in models:
+                continue
+            base_match = re.search(r"([A-Za-z_][A-Za-z0-9_]*)\s*<\s*([^>]+)\s*>", class_info["bases"])
+            if not base_match or base_match.group(1) not in models:
+                continue
+            base_model = models[base_match.group(1)]
+            base_types = split_cpp_template_arguments(base_match.group(2))
+            if len(base_types) <= base_model["type_parameter_index"]:
+                continue
+            derived_type = base_types[base_model["type_parameter_index"]].strip()
+            derived_type_index = next((index for index, parameter in enumerate(class_info["template_parameters"]) if parameter == derived_type), None)
+            if derived_type_index is None:
+                continue
+            for constructor in class_info["constructors"]:
+                initializer_match = re.search(rf"\b{re.escape(base_match.group(1))}\s*<[^>]+>\s*\(", constructor["initializer"])
+                if not initializer_match:
+                    continue
+                initializer_call = extract_call_block(constructor["initializer"], initializer_match.start())
+                initializer_arguments = split_arguments(initializer_call)
+                if len(initializer_arguments) <= base_model["name_index"]:
+                    continue
+                name_parameter = initializer_arguments[base_model["name_index"]].strip()
+                if name_parameter not in constructor["parameters"]:
+                    continue
+                models[class_info["name"]] = {
+                    **base_model,
+                    "class": class_info["name"],
+                    "name_index": constructor["parameters"].index(name_parameter),
+                    "type_parameter_index": derived_type_index,
+                    "evidence": base_model["evidence"] + [evidence(class_info["file"], constructor["line"], "cpp_wrapper_inheritance", constructor["initializer"])],
+                }
+                changed = True
+                break
+    return models, factory_locations
+
+
+def scan_cpp_wrapper_instantiations(path: Path, root: Path, models: dict[str, dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    if not models:
+        return {}
+    text = read_text(path)
+    rel_file = relative(path, root)
+    class_ranges = parse_cpp_classes(path, root)
+
+    def enclosing_class(offset: int) -> str | None:
+        match = next((item for item in class_ranges if item["body_offset"] <= offset < item["end"]), None)
+        return match["name"] if match else None
+
+    results: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    pattern = re.compile(r"(?:std::)?make_(?:unique|shared)\s*<\s*([A-Za-z_][A-Za-z0-9_:]*)\s*<\s*([^<>]+)\s*>\s*>\s*\(")
+    for match in pattern.finditer(text):
+        class_name = match.group(1).split("::")[-1]
+        model = models.get(class_name)
+        if not model:
+            continue
+        block = extract_call_block(text, match.start())
+        arguments = split_arguments(block)
+        type_arguments = split_cpp_template_arguments(match.group(2))
+        if len(arguments) <= model["name_index"] or len(type_arguments) <= model["type_parameter_index"]:
+            continue
+        name, confidence, dynamic = cpp_value(arguments[model["name_index"]])
+        line = line_number(text, match.start())
+        item = finding(
+            model["kind"],
+            name,
+            canonical_ros_type(type_arguments[model["type_parameter_index"]]),
+            rel_file,
+            line,
+            "cpp_wrapper_resolution",
+            block,
+            confidence=min(confidence, 0.94),
+            resolved=not dynamic,
+            wrapper={"class": class_name, "factory_evidence": model["evidence"]},
+            class_name=enclosing_class(match.start()),
+        )
+        results[model["collection"]].append(item)
+    return {key: unique_findings(value) for key, value in results.items()}
+
+
+def discover_cpp_method_wrapper_models(paths: list[Path], root: Path) -> tuple[dict[str, list[dict[str, Any]]], set[tuple[str, int]]]:
+    models: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    factory_locations: set[tuple[str, int]] = set()
+    method_pattern = re.compile(
+        r"(?:^|[;}\n])\s*(?:template\s*<[^>]+>\s*)?(?:virtual\s+)?(?:[A-Za-z_][A-Za-z0-9_:<>,*&]*\s+)+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+        re.MULTILINE,
+    )
+    for path in paths:
+        for class_info in parse_cpp_classes(path, root):
+            class_body = class_info["body"]
+            for method_match in method_pattern.finditer(class_body):
+                method_name = method_match.group(1)
+                signature_start = method_match.start(1)
+                signature = extract_call_block(class_body, signature_start)
+                parameters = [cpp_parameter_name(item) for item in split_arguments(signature)]
+                signature_end = signature_start + len(signature)
+                body_start = class_body.find("{", signature_end)
+                if body_start == -1 or ";" in class_body[signature_end:body_start]:
+                    continue
+                method_body, _ = extract_braced_block(class_body, body_start)
+                factories: list[tuple[str, str, int, str, int, str]] = []
+                action_spans = []
+                for match in re.finditer(r"rclcpp_action::create_(server|client)\s*<\s*([^;()]+?)\s*>\s*\(", method_body):
+                    block = extract_call_block(method_body, match.start())
+                    collection = "action_servers" if match.group(1) == "server" else "action_clients"
+                    kind = "action_server" if match.group(1) == "server" else "action_client"
+                    factories.append((collection, kind, 1, match.group(2).strip(), match.start(), block))
+                    action_spans.append((match.start(), match.start() + len(block)))
+                for collection, kind, call in (
+                    ("publishers", "publisher", "create_publisher"),
+                    ("subscriptions", "subscription", "create_subscription"),
+                    ("service_servers", "service_server", "create_service"),
+                    ("service_clients", "service_client", "create_client"),
+                ):
+                    for match in re.finditer(rf"(?<![A-Za-z0-9_]){call}\s*<\s*([^;()]+?)\s*>\s*\(", method_body):
+                        if call == "create_client" and any(start <= match.start() <= end for start, end in action_spans):
+                            continue
+                        block = extract_call_block(method_body, match.start())
+                        prefix = method_body[max(0, match.start() - 16) : match.start()]
+                        name_index = 1 if re.search(r"rclcpp\s*::\s*$", prefix) else 0
+                        factories.append((collection, kind, name_index, match.group(1).strip(), match.start(), block))
+                for collection, kind, factory_name_index, factory_type, factory_offset, block in factories:
+                    factory_arguments = split_arguments(block)
+                    if len(factory_arguments) <= factory_name_index:
+                        continue
+                    factory_name = factory_arguments[factory_name_index].strip()
+                    if factory_name not in parameters:
+                        continue
+                    absolute_offset = class_info["body_offset"] + body_start + factory_offset
+                    line = line_number(class_info["text"], absolute_offset)
+                    model = {
+                        "class": class_info["name"],
+                        "method": method_name,
+                        "collection": collection,
+                        "kind": kind,
+                        "name_index": parameters.index(factory_name),
+                        "type": canonical_ros_type(factory_type),
+                        "file": class_info["file"],
+                        "line": line,
+                        "evidence": [evidence(class_info["file"], line, "cpp_method_wrapper_factory", block)],
+                    }
+                    models[method_name].append(model)
+                    factory_locations.add((class_info["file"], line))
+    return models, factory_locations
+
+
+def scan_cpp_method_wrapper_invocations(path: Path, root: Path, models: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    if not models:
+        return {}
+    text = read_text(path)
+    rel_file = relative(path, root)
+    class_ranges = parse_cpp_classes(path, root)
+
+    def enclosing_class(offset: int) -> str | None:
+        match = next((item for item in class_ranges if item["body_offset"] <= offset < item["end"]), None)
+        return match["name"] if match else None
+
+    results: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for method_name, method_models in models.items():
+        pattern = re.compile(rf"(?:->|\.)\s*{re.escape(method_name)}\s*\(")
+        for match in pattern.finditer(text):
+            block = extract_call_block(text, match.start())
+            arguments = split_arguments(block)
+            for model in method_models:
+                if rel_file == model["file"] and line_number(text, match.start()) == model["line"]:
+                    continue
+                if len(arguments) <= model["name_index"]:
+                    continue
+                name, confidence, dynamic = cpp_value(arguments[model["name_index"]])
+                if dynamic:
+                    continue
+                line = line_number(text, match.start())
+                results[model["collection"]].append(
+                    finding(
+                        model["kind"],
+                        name,
+                        model["type"],
+                        rel_file,
+                        line,
+                        "cpp_method_wrapper_resolution",
+                        block,
+                        confidence=min(confidence, 0.9),
+                        resolved=True,
+                        wrapper={"class": model["class"], "method": method_name, "factory_evidence": model["evidence"]},
+                        class_name=enclosing_class(match.start()),
+                    )
+                )
+    return {key: unique_findings(value) for key, value in results.items()}
+
+
+def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], set[str], set[str]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    executables = []
+    variables = {match.group(1): match.group(2).strip('"\'') for match in re.finditer(r"\bset\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s+([^\s\)]+)", text)}
+    project_match = re.search(r"\bproject\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)", text)
+    if project_match:
+        variables["PROJECT_NAME"] = project_match.group(1)
+    targets = set()
+    for match in re.finditer(r"\badd_executable\s*\(\s*([^\s\)]+)", text):
+        name = match.group(1)
+        variable = re.fullmatch(r"\$\{([^}]+)\}", name)
+        if variable:
+            name = variables.get(variable.group(1), name)
+        targets.add(name)
+        block = extract_call_block(text, match.start())
+        cmake_tokens = re.findall(r"[^\s\)]+", block[block.find("(") + 1 : block.rfind(")")])
+        sources = [token.strip('"\'') for token in cmake_tokens[1:] if not token.startswith("$")]
+        executables.append(finding("executable", name, "cmake", rel_file, line_number(text, match.start()), "cmake_parser", block, sources=sources))
+    installed = set()
+    for match in re.finditer(r"\binstall\s*\(\s*TARGETS\s+([^\)]*)\)", text, re.DOTALL | re.IGNORECASE):
+        before_destination = re.split(r"\b(?:DESTINATION|EXPORT|ARCHIVE|LIBRARY|RUNTIME|INCLUDES)\b", match.group(1), maxsplit=1, flags=re.IGNORECASE)[0]
+        for token in re.findall(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_-]*", before_destination):
+            variable = re.fullmatch(r"\$\{([^}]+)\}", token)
+            installed.add(variables.get(variable.group(1), token) if variable else token)
+    dependencies = set(re.findall(r"\bfind_package\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)", text))
+    return executables, dependencies, {target for target in targets if target not in installed}
+
+
+def scan_python_setup(path: Path, root: Path) -> list[dict[str, Any]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    results = []
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        tree = None
+    if tree:
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                for key, value in zip(node.keys, node.values):
+                    if isinstance(key, ast.Constant) and key.value == "console_scripts" and isinstance(value, (ast.List, ast.Tuple)):
+                        for entry in value.elts:
+                            if isinstance(entry, ast.Constant) and isinstance(entry.value, str) and "=" in entry.value:
+                                name = entry.value.split("=", 1)[0].strip()
+                                target = entry.value.split("=", 1)[1].strip()
+                                results.append(finding("executable", name, "python_entry_point", rel_file, entry.lineno, "python_ast", entry.value, target=target))
+    if not results:
+        for match in re.finditer(r"['\"]([^'\"=]+)\s*=\s*[^'\"]+['\"]", text):
+            results.append(finding("executable", match.group(1).strip(), "python_entry_point", rel_file, line_number(text, match.start()), "setup_regex", match.group(0), confidence=0.72, target=match.group(0).split("=", 1)[1].strip(" '\"")))
+    return unique_findings(results)
+
+
+def executable_finding(name: str, target: Any, path: Path, root: Path, extractor: str) -> dict[str, Any]:
+    text = read_text(path)
+    target_text = target.get("call") if isinstance(target, dict) else str(target)
+    name_match = re.search(rf"^\s*['\"]?{re.escape(name)}['\"]?\s*=", text, re.MULTILINE)
+    line = line_number(text, name_match.start()) if name_match else 1
+    return finding(
+        "executable",
+        name,
+        "python_entry_point",
+        relative(path, root),
+        line,
+        extractor,
+        name_match.group(0) if name_match else f"{name} = {target_text}",
+        target=target_text,
+    )
+
+
+def scan_python_pyproject(path: Path, root: Path) -> list[dict[str, Any]]:
+    try:
+        data = tomllib.loads(read_text(path))
+    except (tomllib.TOMLDecodeError, UnicodeDecodeError):
+        return []
+    entries: dict[str, Any] = {}
+    project = data.get("project", {})
+    for section in (project.get("scripts", {}), project.get("gui-scripts", {}), project.get("entry-points", {}).get("console_scripts", {})):
+        if isinstance(section, dict):
+            entries.update(section)
+    poetry_scripts = data.get("tool", {}).get("poetry", {}).get("scripts", {})
+    if isinstance(poetry_scripts, dict):
+        entries.update(poetry_scripts)
+    return unique_findings(executable_finding(name, target, path, root, "pyproject_toml") for name, target in entries.items())
+
+
+def scan_python_setup_cfg(path: Path, root: Path) -> list[dict[str, Any]]:
+    parser = configparser.ConfigParser(interpolation=None)
+    parser.optionxform = str
+    try:
+        parser.read_string(read_text(path))
+    except configparser.Error:
+        return []
+    if not parser.has_section("options.entry_points"):
+        return []
+    results = []
+    for group in ("console_scripts", "gui_scripts"):
+        if not parser.has_option("options.entry_points", group):
+            continue
+        for entry in parser.get("options.entry_points", group).splitlines():
+            if "=" not in entry:
+                continue
+            name, target = (item.strip() for item in entry.split("=", 1))
+            if name and target:
+                results.append(executable_finding(name, target, path, root, "setup_cfg"))
+    return unique_findings(results)
+
+
+def parse_interface(path: Path, root: Path) -> dict[str, Any]:
+    text = read_text(path)
+    sections: list[list[dict[str, Any]]] = [[]]
+    for line_index, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.split("#", 1)[0].strip()
+        if not line:
+            continue
+        if line == "---":
+            sections.append([])
+            continue
+        match = re.match(r"([^\s]+)\s+([A-Za-z_][A-Za-z0-9_]*)(?:\s*=\s*(.+))?$", line)
+        if match:
+            sections[-1].append({"type": match.group(1), "name": match.group(2), "constant": match.group(3), "line": line_index})
+    labels = {".msg": ["message"], ".srv": ["request", "response"], ".action": ["goal", "result", "feedback"]}[path.suffix]
+    return {
+        "kind": labels[0] if len(labels) == 1 else path.suffix[1:],
+        "name": path.stem,
+        "file": relative(path, root),
+        "sections": [{"name": labels[index] if index < len(labels) else f"section_{index + 1}", "fields": fields} for index, fields in enumerate(sections)],
+        "fact_type": "detected",
+        "confidence": 1.0,
+        "evidence": [evidence(relative(path, root), 1, "ros_interface_parser", path.name)],
+    }
+
+
+def strip_yaml_comment(line: str) -> str:
+    quote: str | None = None
+    escaped = False
+    for index, character in enumerate(line):
+        if quote:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == quote:
+                quote = None
+        elif character in {'"', "'"}:
+            quote = character
+        elif character == "#":
+            return line[:index]
+    return line
+
+
+def split_yaml_mapping(value: str) -> tuple[str, str] | None:
+    quote: str | None = None
+    depth = 0
+    for index, character in enumerate(value):
+        if quote:
+            if character == quote and (index == 0 or value[index - 1] != "\\"):
+                quote = None
+        elif character in {'"', "'"}:
+            quote = character
+        elif character in "[{":
+            depth += 1
+        elif character in "]}":
+            depth = max(0, depth - 1)
+        elif character == ":" and depth == 0:
+            return value[:index].strip().strip('"\''), value[index + 1 :].strip()
+    return None
+
+
+def parse_yaml_scalar(value: str) -> Any:
+    stripped = value.strip()
+    if not stripped:
+        return None
+    lowered = stripped.lower()
+    if lowered in {"null", "~"}:
+        return None
+    if lowered in {"true", "false"}:
+        return lowered == "true"
+    if re.fullmatch(r"[-+]?\d+", stripped):
+        return int(stripped)
+    if re.fullmatch(r"[-+]?(?:\d+\.\d*|\d*\.\d+)(?:[eE][-+]?\d+)?", stripped):
+        return float(stripped)
+    if stripped[0:1] in {'"', "'"} and stripped[-1:] == stripped[0]:
+        try:
+            return ast.literal_eval(stripped)
+        except (SyntaxError, ValueError):
+            return stripped[1:-1]
+    if stripped.startswith("[") and stripped.endswith("]"):
+        inner = stripped[1:-1]
+        return [parse_yaml_scalar(item) for item in split_cpp_template_arguments(inner)] if inner.strip() else []
+    if stripped.startswith("{") and stripped.endswith("}"):
+        result = {}
+        for item in split_cpp_template_arguments(stripped[1:-1]):
+            mapping = split_yaml_mapping(item)
+            if mapping:
+                result[mapping[0]] = parse_yaml_scalar(mapping[1])
+        return result
+    return stripped
+
+
+def parse_yaml_structure(text: str) -> tuple[Any, dict[tuple[str, ...], int]]:
+    records = []
+    for line_number_value, raw_line in enumerate(text.splitlines(), start=1):
+        without_comment = strip_yaml_comment(raw_line).rstrip()
+        if not without_comment.strip() or without_comment.strip() in {"---", "..."}:
+            continue
+        indent = len(without_comment) - len(without_comment.lstrip(" "))
+        records.append((indent, without_comment.strip(), line_number_value))
+    line_map: dict[tuple[str, ...], int] = {}
+
+    def parse_block(index: int, indent: int, path: tuple[str, ...]) -> tuple[Any, int]:
+        is_list = records[index][1].startswith("- ")
+        container: Any = [] if is_list else {}
+        while index < len(records):
+            current_indent, content, source_line = records[index]
+            if current_indent < indent or current_indent > indent or content.startswith("- ") != is_list:
+                break
+            if is_list:
+                remainder = content[2:].strip()
+                item_path = path + (str(len(container)),)
+                mapping = split_yaml_mapping(remainder)
+                if mapping:
+                    item = {}
+                    key, raw_value = mapping
+                    line_map[item_path + (key,)] = source_line
+                    if raw_value:
+                        item[key] = parse_yaml_scalar(raw_value)
+                        index += 1
+                    elif index + 1 < len(records) and records[index + 1][0] > current_indent:
+                        item[key], index = parse_block(index + 1, records[index + 1][0], item_path + (key,))
+                    else:
+                        item[key] = None
+                        index += 1
+                    while index < len(records) and records[index][0] > current_indent:
+                        nested_indent, nested_content, nested_line = records[index]
+                        nested_mapping = split_yaml_mapping(nested_content)
+                        if not nested_mapping:
+                            break
+                        nested_key, nested_raw = nested_mapping
+                        line_map[item_path + (nested_key,)] = nested_line
+                        if nested_raw:
+                            item[nested_key] = parse_yaml_scalar(nested_raw)
+                            index += 1
+                        elif index + 1 < len(records) and records[index + 1][0] > nested_indent:
+                            item[nested_key], index = parse_block(index + 1, records[index + 1][0], item_path + (nested_key,))
+                        else:
+                            item[nested_key] = None
+                            index += 1
+                    container.append(item)
+                else:
+                    container.append(parse_yaml_scalar(remainder))
+                    line_map[item_path] = source_line
+                    index += 1
+                continue
+            mapping = split_yaml_mapping(content)
+            if not mapping:
+                index += 1
+                continue
+            key, raw_value = mapping
+            key_path = path + (key,)
+            line_map[key_path] = source_line
+            if raw_value:
+                container[key] = parse_yaml_scalar(raw_value)
+                index += 1
+            elif index + 1 < len(records) and records[index + 1][0] > current_indent:
+                container[key], index = parse_block(index + 1, records[index + 1][0], key_path)
+            else:
+                container[key] = None
+                index += 1
+        return container, index
+
+    if not records:
+        return {}, line_map
+    data, _ = parse_block(0, records[0][0], ())
+    return data, line_map
+
+
+def yaml_value_type(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "double"
+    if isinstance(value, list):
+        element_types = sorted({yaml_value_type(item) for item in value})
+        return f"array<{element_types[0]}>" if len(element_types) == 1 else "array<mixed>"
+    if isinstance(value, dict):
+        return "map"
+    return "string"
+
+
+def parameter_selector(path: tuple[str, ...]) -> tuple[str, str, int]:
+    selector = "/".join(part.strip("/") for part in path if part)
+    if path and str(path[0]).startswith("/"):
+        selector = "/" + selector
+    if selector == "**" or selector.endswith("/**"):
+        selector = "/**" if selector == "**" else selector
+    namespace = selector.rsplit("/", 1)[0] if "/" in selector.strip("/") else ""
+    specificity = 0 if selector == "/**" else 1 if "*" in selector else 2
+    return selector or "/**", namespace, specificity
+
+
+def scan_parameter_yaml(path: Path, root: Path) -> list[dict[str, Any]]:
+    text = read_text(path)
+    if "ros__parameters" not in text:
+        return []
+    data, line_map = parse_yaml_structure(text)
+    rel_file = relative(path, root)
+    results = []
+
+    def flatten_parameters(value: Any, prefix: tuple[str, ...]) -> Iterator[tuple[tuple[str, ...], Any]]:
+        if isinstance(value, dict):
+            for key, nested in value.items():
+                yield from flatten_parameters(nested, prefix + (str(key),))
+        else:
+            yield prefix, value
+
+    def visit(value: Any, path_parts: tuple[str, ...]) -> None:
+        if not isinstance(value, dict):
+            return
+        if "ros__parameters" in value and isinstance(value["ros__parameters"], dict):
+            selector, namespace, specificity = parameter_selector(path_parts)
+            for parameter_path, parameter_value in flatten_parameters(value["ros__parameters"], ()):
+                full_path = path_parts + ("ros__parameters",) + parameter_path
+                source_line = line_map.get(full_path, line_map.get(path_parts + ("ros__parameters",), 1))
+                name = ".".join(parameter_path)
+                results.append(
+                    finding(
+                        "parameter_override",
+                        name,
+                        yaml_value_type(parameter_value),
+                        rel_file,
+                        source_line,
+                        "yaml_parameter_tree",
+                        text.splitlines()[source_line - 1] if 0 < source_line <= len(text.splitlines()) else name,
+                        value=parameter_value,
+                        selector=selector,
+                        namespace=namespace,
+                        parameter_path=list(parameter_path),
+                        selector_specificity=specificity,
+                        precedence_rank=20 + specificity,
+                        confidence=0.96,
+                    )
+                )
+        for key, nested in value.items():
+            if key != "ros__parameters":
+                visit(nested, path_parts + (str(key),))
+
+    visit(data, ())
+    return unique_findings(results)
+
+
+def scan_plugins(path: Path, root: Path) -> list[dict[str, Any]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    results = []
+    if path.suffix in {".yaml", ".yml"}:
+        for match in re.finditer(r"^\s*plugin\s*:\s*['\"]?([^'\"#\n]+)", text, re.MULTILINE):
+            name = match.group(1).strip()
+            results.append(finding("plugin", name, infer_algorithm_role(name), rel_file, line_number(text, match.start()), "yaml_plugin", match.group(0), confidence=0.96))
+    elif path.suffix == ".xml":
+        for match in re.finditer(r"<class\b[^>]*\btype\s*=\s*['\"]([^'\"]+)['\"][^>]*>", text):
+            name = match.group(1)
+            results.append(finding("plugin", name, infer_algorithm_role(name), rel_file, line_number(text, match.start()), "pluginlib_xml", match.group(0), confidence=0.98))
+    return results
+
+
+def infer_algorithm_role(name: str) -> str:
+    lowered = name.lower()
+    roles = [
+        ("planner", "planning"),
+        ("controller", "control"),
+        ("localiz", "localization"),
+        ("slam", "mapping"),
+        ("filter", "filtering"),
+        ("costmap", "environment model"),
+        ("behavior", "behavior execution"),
+        ("dock", "docking"),
+        ("driver", "hardware driver"),
+        ("hardware", "hardware interface"),
+        ("kinematic", "kinematics"),
+    ]
+    return next((role for token, role in roles if token in lowered), "runtime plugin")
+
+
+def launch_expression(node: ast.AST | None, constants: dict[str, Any]) -> tuple[str | None, float, bool]:
+    if node is None:
+        return None, 1.0, False
+    value, confidence, dynamic = evaluate_python_expression(node, constants)
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, sort_keys=True), confidence, dynamic
+    return str(value) if value is not None else None, confidence, dynamic
+
+
+def keyword_node(node: ast.Call, name: str) -> ast.AST | None:
+    return next((keyword.value for keyword in node.keywords if keyword.arg == name), None)
+
+
+def list_pairs(node: ast.AST | None, constants: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return []
+    pairs = []
+    for item in node.elts:
+        if isinstance(item, (ast.List, ast.Tuple)) and len(item.elts) >= 2:
+            source, _, source_dynamic = evaluate_python_expression(item.elts[0], constants)
+            target, _, target_dynamic = evaluate_python_expression(item.elts[1], constants)
+            pairs.append({"from": str(source), "to": str(target), "resolved": not (source_dynamic or target_dynamic)})
+    return pairs
+
+
+def parameter_references(node: ast.AST | None, constants: dict[str, Any]) -> list[dict[str, Any]]:
+    if not isinstance(node, (ast.List, ast.Tuple)):
+        return []
+    results = []
+    for item in node.elts:
+        value, confidence, dynamic = evaluate_python_expression(item, constants)
+        if isinstance(value, dict):
+            results.append({"kind": "inline", "value": value, "confidence": confidence, "resolved": not dynamic})
+        else:
+            results.append({"kind": "file" if str(value).endswith((".yaml", ".yml")) else "expression", "value": str(value), "confidence": confidence, "resolved": not dynamic})
+    return results
+
+
+def scan_launch_python(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    try:
+        tree = ast.parse(text, filename=rel_file)
+    except SyntaxError as exc:
+        return [], [], [], [diagnostic("RD004", "error", "Python launch file could not be parsed", f"{rel_file}: {exc.msg}.", [evidence(rel_file, exc.lineno, "python_ast", exc.text or "")], 1.0)]
+    constants: dict[str, Any] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            value, _, dynamic = evaluate_python_expression(node.value, constants)
+            if isinstance(value, (str, int, float, bool, list, dict)):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        constants[target.id] = value
+    actions: list[dict[str, Any]] = []
+    includes: list[dict[str, Any]] = []
+    arguments: list[dict[str, Any]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        short = call_name(node.func).split(".")[-1]
+        if short in {"Node", "LifecycleNode", "ComposableNode", "ComposableNodeContainer"}:
+            package_node = keyword_node(node, "package")
+            executable_node = keyword_node(node, "executable") or keyword_node(node, "plugin")
+            name_node = keyword_node(node, "name")
+            namespace_node = keyword_node(node, "namespace")
+            package, package_confidence, package_dynamic = launch_expression(package_node, constants)
+            executable, executable_confidence, executable_dynamic = launch_expression(executable_node, constants)
+            name, name_confidence, name_dynamic = launch_expression(name_node, constants)
+            namespace, namespace_confidence, namespace_dynamic = launch_expression(namespace_node, constants)
+            confidence = min(value for value in [package_confidence, executable_confidence] if value > 0) if package_node is not None and executable_node is not None else 0.75
+            actions.append(
+                {
+                    "kind": "container" if short == "ComposableNodeContainer" else "composable_node" if short == "ComposableNode" else "node",
+                    "package": package,
+                    "executable": executable,
+                    "name": name,
+                    "namespace": namespace,
+                    "condition": expression_text(keyword_node(node, "condition")),
+                    "remappings": list_pairs(keyword_node(node, "remappings"), constants),
+                    "parameters": parameter_references(keyword_node(node, "parameters"), constants),
+                    "lifecycle": short == "LifecycleNode",
+                    "composed": short in {"ComposableNode", "ComposableNodeContainer"},
+                    "fact_type": "detected",
+                    "confidence": round(confidence, 2),
+                    "resolved": not (package_dynamic or executable_dynamic or name_dynamic or namespace_dynamic),
+                    "source_file": rel_file,
+                    "line": node.lineno,
+                    "evidence": [evidence(rel_file, node.lineno, "python_launch_ast", source_segment(text, node))],
+                }
+            )
+        elif short == "IncludeLaunchDescription":
+            target_node = node.args[0] if node.args else None
+            target, confidence, dynamic = launch_expression(target_node, constants)
+            launch_arguments = keyword_node(node, "launch_arguments")
+            includes.append(
+                {
+                    "target": target,
+                    "resolved_path": None,
+                    "exists": None,
+                    "arguments": expression_text(launch_arguments),
+                    "condition": expression_text(keyword_node(node, "condition")),
+                    "fact_type": "detected",
+                    "confidence": round(confidence, 2),
+                    "resolved": not dynamic,
+                    "source_file": rel_file,
+                    "line": node.lineno,
+                    "evidence": [evidence(rel_file, node.lineno, "python_launch_ast", source_segment(text, node))],
+                }
+            )
+        elif short == "DeclareLaunchArgument":
+            name, confidence, dynamic = launch_expression(node.args[0] if node.args else None, constants)
+            default, _, default_dynamic = launch_expression(keyword_node(node, "default_value"), constants)
+            arguments.append({"name": name, "default": default, "description": launch_expression(keyword_node(node, "description"), constants)[0], "fact_type": "detected", "confidence": confidence, "resolved": not (dynamic or default_dynamic), "source_file": rel_file, "line": node.lineno, "evidence": [evidence(rel_file, node.lineno, "python_launch_ast", source_segment(text, node))]})
+        elif short in {"PushRosNamespace", "SetRemap"}:
+            value, confidence, dynamic = launch_expression(node.args[0] if node.args else None, constants)
+            actions.append({"kind": "namespace" if short == "PushRosNamespace" else "remap", "value": value, "source_file": rel_file, "line": node.lineno, "fact_type": "detected", "confidence": confidence, "resolved": not dynamic, "evidence": [evidence(rel_file, node.lineno, "python_launch_ast", source_segment(text, node))]})
+    return actions, includes, arguments, []
+
+
+def xml_tag(element: ET.Element) -> str:
+    return element.tag.rsplit("}", 1)[-1]
+
+
+def scan_launch_xml(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    rel_file = relative(path, root)
+    try:
+        tree = ET.parse(path)
+    except ET.ParseError as exc:
+        return [], [], [], [diagnostic("RD005", "error", "XML launch file could not be parsed", f"{rel_file}: {exc}.", [evidence(rel_file, getattr(exc, "position", (None,))[0], "xml_parser", str(exc))], 1.0)]
+    actions = []
+    includes = []
+    arguments = []
+    for element in tree.getroot().iter():
+        tag = xml_tag(element)
+        line = getattr(element, "sourceline", None)
+        if tag in {"node", "composable_node", "node_container"}:
+            remappings = [{"from": child.attrib.get("from"), "to": child.attrib.get("to"), "resolved": True} for child in element if xml_tag(child) == "remap"]
+            parameters = []
+            for child in element:
+                if xml_tag(child) == "param":
+                    value = child.attrib.get("from") or child.attrib.get("value")
+                    parameters.append({"kind": "file" if value and value.endswith((".yaml", ".yml")) else "inline", "value": value, "name": child.attrib.get("name"), "resolved": "$" not in (value or ""), "confidence": 0.95})
+            actions.append({"kind": "container" if tag == "node_container" else tag, "package": element.attrib.get("pkg") or element.attrib.get("package"), "executable": element.attrib.get("exec") or element.attrib.get("executable") or element.attrib.get("plugin"), "name": element.attrib.get("name"), "namespace": element.attrib.get("namespace") or element.attrib.get("ns"), "condition": element.attrib.get("if") or element.attrib.get("unless"), "remappings": remappings, "parameters": parameters, "lifecycle": element.attrib.get("lifecycle") == "true", "composed": tag in {"composable_node", "node_container"}, "fact_type": "detected", "confidence": 0.98, "resolved": not any("$" in (value or "") for value in [element.attrib.get("pkg"), element.attrib.get("exec"), element.attrib.get("name")]), "source_file": rel_file, "line": line, "evidence": [evidence(rel_file, line, "xml_launch_parser", ET.tostring(element, encoding="unicode"))]})
+        elif tag == "include":
+            target = element.attrib.get("file")
+            includes.append({"target": target, "resolved_path": None, "exists": None, "arguments": {child.attrib.get("name"): child.attrib.get("value") for child in element if xml_tag(child) == "arg"}, "condition": element.attrib.get("if") or element.attrib.get("unless"), "fact_type": "detected", "confidence": 0.98, "resolved": "$" not in (target or ""), "source_file": rel_file, "line": line, "evidence": [evidence(rel_file, line, "xml_launch_parser", ET.tostring(element, encoding="unicode"))]})
+        elif tag == "arg" and element.attrib.get("name"):
+            arguments.append({"name": element.attrib.get("name"), "default": element.attrib.get("default"), "description": element.attrib.get("description"), "fact_type": "detected", "confidence": 0.98, "resolved": "$" not in (element.attrib.get("default") or ""), "source_file": rel_file, "line": line, "evidence": [evidence(rel_file, line, "xml_launch_parser", ET.tostring(element, encoding="unicode"))]})
+        elif tag == "push_ros_namespace":
+            actions.append({"kind": "namespace", "value": element.attrib.get("namespace"), "source_file": rel_file, "line": line, "fact_type": "detected", "confidence": 0.98, "resolved": "$" not in (element.attrib.get("namespace") or ""), "evidence": [evidence(rel_file, line, "xml_launch_parser", ET.tostring(element, encoding="unicode"))]})
+    return actions, includes, arguments, []
+
+
+def yaml_scalar(value: str) -> str:
+    return value.strip().strip("[]{} ").strip('"\'')
+
+
+def scan_launch_yaml(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Parse standard ROS YAML launch actions without requiring PyYAML."""
+    lines = read_text(path).splitlines()
+    rel_file = relative(path, root)
+    action_pattern = re.compile(r"^(\s*)-\s*(node|composable_node|node_container|include|arg|push_ros_namespace)\s*:\s*(.*)$")
+    records = []
+    for index, raw_line in enumerate(lines):
+        match = action_pattern.match(raw_line)
+        if not match:
+            continue
+        indent = len(match.group(1))
+        end = index + 1
+        while end < len(lines):
+            next_line = lines[end]
+            next_indent = len(next_line) - len(next_line.lstrip())
+            if next_line.strip() and next_indent <= indent and action_pattern.match(next_line):
+                break
+            end += 1
+        block = lines[index:end]
+        values: dict[str, str] = {}
+        remappings = []
+        parameters = []
+        for offset, line in enumerate(block):
+            key_match = re.match(r"\s*-?\s*([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$", line)
+            if key_match and key_match.group(2):
+                key = key_match.group(1)
+                value = yaml_scalar(key_match.group(2).split("#", 1)[0])
+                values[key] = value
+                if key in {"param", "params", "parameters", "file"} and value.endswith((".yaml", ".yml")):
+                    parameters.append({"kind": "file", "value": value, "confidence": 0.9, "resolved": "$" not in value})
+            remap_match = re.search(r"(?:from|src)\s*:\s*['\"]?([^,'\"}]+).*?(?:to|dst)\s*:\s*['\"]?([^,'\"}]+)", line)
+            if remap_match:
+                remappings.append({"from": remap_match.group(1).strip(), "to": remap_match.group(2).strip(), "resolved": True})
+        records.append((match.group(2), index + 1, values, remappings, parameters, "\n".join(block)))
+    actions = []
+    includes = []
+    arguments = []
+    for kind, line, values, remappings, parameters, block in records:
+        if kind in {"node", "composable_node", "node_container"}:
+            actions.append({"kind": "container" if kind == "node_container" else kind, "package": values.get("pkg") or values.get("package"), "executable": values.get("exec") or values.get("executable") or values.get("plugin"), "name": values.get("name"), "namespace": values.get("namespace") or values.get("ns"), "condition": values.get("if") or values.get("unless"), "remappings": remappings, "parameters": parameters, "lifecycle": values.get("lifecycle", "false").lower() == "true", "composed": kind != "node", "fact_type": "detected", "confidence": 0.86, "resolved": not any("$" in value for value in values.values()), "source_file": rel_file, "line": line, "evidence": [evidence(rel_file, line, "yaml_launch_parser", block)]})
+        elif kind == "include":
+            target = values.get("file") or values.get("path")
+            includes.append({"target": target, "resolved_path": None, "exists": None, "arguments": {}, "condition": values.get("if") or values.get("unless"), "fact_type": "detected", "confidence": 0.86, "resolved": "$" not in (target or ""), "source_file": rel_file, "line": line, "evidence": [evidence(rel_file, line, "yaml_launch_parser", block)]})
+        elif kind == "arg":
+            arguments.append({"name": values.get("name"), "default": values.get("default"), "description": values.get("description"), "fact_type": "detected", "confidence": 0.86, "resolved": "$" not in values.get("default", ""), "source_file": rel_file, "line": line, "evidence": [evidence(rel_file, line, "yaml_launch_parser", block)]})
+        elif kind == "push_ros_namespace":
+            actions.append({"kind": "namespace", "value": values.get("namespace") or values.get("value"), "source_file": rel_file, "line": line, "fact_type": "detected", "confidence": 0.86, "resolved": False, "evidence": [evidence(rel_file, line, "yaml_launch_parser", block)]})
+    return actions, includes, arguments, []
+
+
+def resolve_repository_reference(expression: str | None, source_file: str, root: Path, packages: list[dict[str, Any]]) -> tuple[str | None, bool | None]:
+    if not expression or "$(var " in expression or "LaunchConfiguration" in expression:
+        return None, None
+    value = expression
+    package_match = re.search(r"\$\(find-pkg-share\s+([^\)]+)\)", value)
+    if package_match:
+        package = next((item for item in packages if item["name"] == package_match.group(1)), None)
+        if not package:
+            return None, None
+        value = value.replace(package_match.group(0), str(root / package["path"]))
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = root / Path(source_file).parent / candidate
+    if candidate.exists():
+        return relative(candidate, root), True
+    basename = Path(value).name
+    matches = [path for path in iter_repository_files(root) if path.name == basename]
+    if len(matches) == 1:
+        return relative(matches[0], root), True
+    return relative(candidate, root), False
+
+
+def scan_launch_file(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    if path.name.endswith(".launch.py"):
+        return scan_launch_python(path, root)
+    if path.name.endswith((".launch.yaml", ".launch.yml")):
+        return scan_launch_yaml(path, root)
+    return scan_launch_xml(path, root)
+
+
+def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    text = read_text(path)
+    rel_file = relative(path, root)
+    transforms = []
+    sensors = []
+    frames = set(re.findall(r"<link\b[^>]*\bname\s*=\s*['\"]([^'\"]+)", text))
+    joint_pattern = re.compile(r"<joint\b[^>]*\bname\s*=\s*['\"]([^'\"]+)['\"][^>]*>(.*?)</joint>", re.DOTALL)
+    for match in joint_pattern.finditer(text):
+        parent = re.search(r"<parent\b[^>]*\blink\s*=\s*['\"]([^'\"]+)", match.group(2))
+        child = re.search(r"<child\b[^>]*\blink\s*=\s*['\"]([^'\"]+)", match.group(2))
+        if parent and child:
+            transforms.append({"parent": parent.group(1), "child": child.group(1), "joint": match.group(1), "file": rel_file, "line": line_number(text, match.start()), "fact_type": "detected", "confidence": 0.98, "evidence": [evidence(rel_file, line_number(text, match.start()), "urdf_parser", match.group(0))]})
+    for match in re.finditer(r"<sensor\b([^>]*)>", text):
+        attributes = match.group(1)
+        name_match = re.search(r"\bname\s*=\s*['\"]([^'\"]+)", attributes)
+        type_match = re.search(r"\btype\s*=\s*['\"]([^'\"]+)", attributes)
+        if name_match or type_match:
+            name = name_match.group(1) if name_match else type_match.group(1)
+            dynamic = "${" in name or "$(" in name
+            sensors.append(finding("sensor", name, type_match.group(1) if type_match else "urdf sensor", rel_file, line_number(text, match.start()), "urdf_sensor_parser", match.group(0), confidence=0.96 if not dynamic else 0.72, resolved=not dynamic))
+    return transforms, sensors, sorted(frames)
+
+
+def diagnostic(code: str, severity: str, title: str, message: str, evidence_items: list[dict[str, Any]], confidence: float, **extra: Any) -> dict[str, Any]:
+    result = {"code": code, "severity": severity, "title": title, "message": message, "fact_type": "diagnostic", "confidence": round(confidence, 2), "evidence": evidence_items}
+    result.update(extra)
+    return result
+
+
+def declared_dependencies(package: dict[str, Any]) -> set[str]:
+    return {dependency for values in package["dependencies"].values() for dependency in values}
+
+
+def is_probable_ros_dependency(name: str, local_names: set[str]) -> bool:
+    return name in KNOWN_ROS_IMPORTS or name in local_names or name.endswith(("_msgs", "_interfaces", "_srvs", "_actions", "_description")) or name.startswith(("rcl", "rosidl", "ament_", "tf2"))
+
+
+COMMUNICATION_KEYS = (
+    "publishers",
+    "subscriptions",
+    "service_servers",
+    "service_clients",
+    "action_servers",
+    "action_clients",
+)
+
+
+def node_class(item: dict[str, Any]) -> str | None:
+    return item.get("class") or item.get("class_name")
+
+
+def executable_matches_node(executable: dict[str, Any], node: dict[str, Any]) -> bool:
+    source_file = node.get("source_file") or ""
+    target = executable.get("target") or ""
+    if target:
+        module = target.split(":", 1)[0]
+        module_path = module.replace(".", "/") + ".py"
+        if source_file.endswith(module_path):
+            return True
+    return any(source_file.endswith(source) or source_file.endswith("/" + source) for source in executable.get("sources", []))
+
+
+def source_node_definitions(package_reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    definitions = []
+    for report in package_reports:
+        package_name = report["package"]["name"]
+        package_nodes = []
+        for index, item in enumerate(report["node_names"]):
+            class_name = node_class(item)
+            node_id = f"source:{package_name}:{class_name or item.get('name') or index}:{item['file']}"
+            package_nodes.append(
+                {
+                    "id": node_id,
+                    "name": item.get("name"),
+                    "namespace": "",
+                    "package": package_name,
+                    "executable": None,
+                    "executables": [],
+                    "class": class_name,
+                    "origin": "source",
+                    "definition_id": None,
+                    "source_file": item["file"],
+                    "line": item.get("line"),
+                    "lifecycle": item.get("lifecycle", False),
+                    "active": True,
+                    "resolved": item.get("resolved", False),
+                    "fact_type": "detected",
+                    "confidence": item.get("confidence", 0.8),
+                    "evidence": item["evidence"],
+                    "parameters": [],
+                    **{key: [] for key in COMMUNICATION_KEYS},
+                }
+            )
+        synthetic_by_file: dict[str, dict[str, Any]] = {}
+
+        def candidate_node(entity: dict[str, Any]) -> dict[str, Any]:
+            class_name = node_class(entity)
+            candidates = [item for item in package_nodes if class_name and item.get("class") == class_name]
+            if not candidates:
+                candidates = [item for item in package_nodes if item["source_file"] == entity["file"]]
+            if not candidates and len(package_nodes) == 1:
+                candidates = package_nodes
+            if candidates:
+                return candidates[0]
+            if entity["file"] not in synthetic_by_file:
+                synthetic_by_file[entity["file"]] = {
+                    "id": f"source:{package_name}:unresolved:{entity['file']}",
+                    "name": None,
+                    "namespace": "",
+                    "package": package_name,
+                    "executable": None,
+                    "executables": [],
+                    "class": class_name,
+                    "origin": "source_scope",
+                    "definition_id": None,
+                    "source_file": entity["file"],
+                    "line": entity.get("line"),
+                    "lifecycle": entity.get("lifecycle", False),
+                    "active": True,
+                    "resolved": False,
+                    "fact_type": "inferred",
+                    "confidence": 0.58,
+                    "evidence": entity["evidence"],
+                    "parameters": [],
+                    **{key: [] for key in COMMUNICATION_KEYS},
+                }
+            return synthetic_by_file[entity["file"]]
+
+        for key in COMMUNICATION_KEYS:
+            for endpoint in report[key]:
+                candidate_node(endpoint)[key].append({"package": package_name, **endpoint})
+        for parameter in report["declared_parameters"]:
+            node = candidate_node(parameter)
+            node["parameters"].append(
+                {
+                    "name": parameter.get("name"),
+                    "value": parameter.get("default"),
+                    "type": yaml_value_type(parameter.get("default")),
+                    "source": "code_default",
+                    "selector": None,
+                    "precedence_rank": 10,
+                    "effective": True,
+                    "confidence": parameter.get("confidence", 0.8),
+                    "evidence": parameter["evidence"],
+                }
+            )
+        package_nodes.extend(synthetic_by_file.values())
+        for node in package_nodes:
+            matching_executables = [item for item in report["executables"] if executable_matches_node(item, node)]
+            node["executables"] = sorted({item["name"] for item in matching_executables})
+            if len(matching_executables) == 1:
+                node["executable"] = matching_executables[0]["name"]
+            elif len(report["executables"]) == 1:
+                node["executable"] = report["executables"][0]["name"]
+        definitions.extend(package_nodes)
+    return definitions
+
+
+def join_ros_namespace(*parts: str | None) -> str:
+    values = [str(part).strip("/") for part in parts if part and str(part).strip("/")]
+    return "/" + "/".join(values) if values else ""
+
+
+def effective_ros_name(name: str | None, namespace: str, node_name: str | None, remappings: list[dict[str, Any]]) -> tuple[str | None, bool]:
+    if not name:
+        return name, False
+    original = name
+    remap = next((item for item in remappings if (item.get("from") or "").strip("/") == original.strip("/")), None)
+    value = remap.get("to") if remap else original
+    resolved = not any(token in str(value) for token in ("$(", "${", "{dynamic}"))
+    if str(value).startswith("/"):
+        return str(value), resolved
+    if str(value).startswith("~/"):
+        return join_ros_namespace(namespace, node_name, str(value)[2:]), resolved
+    return join_ros_namespace(namespace, str(value)) if namespace else str(value), resolved
+
+
+def selector_matches_node(selector: str | None, node_name: str | None, namespace: str) -> bool:
+    if not selector or selector == "/**":
+        return True
+    fully_qualified = join_ros_namespace(namespace, node_name)
+    normalized = "/" + selector.strip("/")
+    if normalized.endswith("/**"):
+        return fully_qualified.startswith(normalized[:-3])
+    return normalized == fully_qualified or selector.strip("/") == (node_name or "").strip("/")
+
+
+def flatten_inline_parameters(value: Any, prefix: tuple[str, ...] = ()) -> Iterator[tuple[str, Any]]:
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            yield from flatten_inline_parameters(nested, prefix + (str(key),))
+    else:
+        yield ".".join(prefix), value
+
+
+def launch_node_parameters(
+    definition: dict[str, Any] | None,
+    action: dict[str, Any],
+    launch_file: str,
+    namespace: str,
+    root: Path,
+    package_reports: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    candidates = [dict(item) for item in (definition or {}).get("parameters", [])]
+    packages = [item["package"] for item in package_reports]
+    parameter_files = {item["file"]: item for report in package_reports for item in report["parameter_files"]}
+    order = 0
+    for source in action.get("parameters", []):
+        order += 1
+        if source.get("kind") == "file":
+            resolved_path, exists = resolve_repository_reference(str(source.get("value")), launch_file, root, packages)
+            source["resolved_path"] = resolved_path
+            source["exists"] = exists
+            parameter_file = parameter_files.get(resolved_path or "")
+            if parameter_file:
+                for override in parameter_file["parameters"]:
+                    if selector_matches_node(override.get("selector"), action.get("name") or (definition or {}).get("name"), namespace):
+                        candidates.append(
+                            {
+                                "name": override.get("name"),
+                                "value": override.get("value"),
+                                "type": override.get("type"),
+                                "source": "yaml_override",
+                                "selector": override.get("selector"),
+                                "precedence_rank": override.get("precedence_rank", 20) + order,
+                                "effective": False,
+                                "confidence": override.get("confidence", 0.8),
+                                "evidence": override["evidence"],
+                            }
+                        )
+        elif source.get("kind") == "inline" and isinstance(source.get("value"), dict):
+            for name, value in flatten_inline_parameters(source["value"]):
+                candidates.append(
+                    {
+                        "name": name,
+                        "value": value,
+                        "type": yaml_value_type(value),
+                        "source": "launch_inline",
+                        "selector": join_ros_namespace(namespace, action.get("name")),
+                        "precedence_rank": 100 + order,
+                        "effective": False,
+                        "confidence": source.get("confidence", 0.85),
+                        "evidence": action["evidence"],
+                    }
+                )
+    winners: dict[str, dict[str, Any]] = {}
+    for item in candidates:
+        name = item.get("name")
+        if name is not None and (name not in winners or item["precedence_rank"] >= winners[name]["precedence_rank"]):
+            winners[name] = item
+    for item in candidates:
+        item["effective"] = winners.get(item.get("name")) is item
+    return candidates
+
+
+def build_node_architecture(package_reports: list[dict[str, Any]], launch_files: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]:
+    definitions = source_node_definitions(package_reports)
+    instances = []
+    matched_definitions = set()
+    for launch in launch_files:
+        namespace_actions = [item.get("value") for item in launch["actions"] if item["kind"] == "namespace" and item.get("resolved")]
+        inherited_namespace = namespace_actions[0] if len(namespace_actions) == 1 else ""
+        for index, action in enumerate(launch["actions"]):
+            if action["kind"] not in {"node", "composable_node", "container"}:
+                continue
+            candidates = [item for item in definitions if item["package"] == action.get("package")]
+            exact = [item for item in candidates if action.get("executable") and action.get("executable") in item.get("executables", [])]
+            if action["kind"] == "composable_node" and action.get("executable"):
+                plugin_class = action["executable"].split("::")[-1]
+                exact.extend(item for item in candidates if item.get("class") == plugin_class)
+            functional_exact = [item for item in exact if any(item[key] for key in COMMUNICATION_KEYS)]
+            definition = functional_exact[0] if len(functional_exact) == 1 else exact[0] if len(exact) == 1 else candidates[0] if len(candidates) == 1 else None
+            if definition:
+                matched_definitions.add(definition["id"])
+            namespace = join_ros_namespace(inherited_namespace, action.get("namespace"))
+            node_name = action.get("name") or (definition or {}).get("name") or action.get("executable")
+            node_id = f"launch:{launch['file']}:{index}:{namespace}:{node_name}"
+            instance = {
+                "id": node_id,
+                "name": node_name,
+                "namespace": namespace,
+                "package": action.get("package"),
+                "executable": action.get("executable"),
+                "executables": [action.get("executable")] if action.get("executable") else [],
+                "class": (definition or {}).get("class"),
+                "origin": "launch",
+                "definition_id": (definition or {}).get("id"),
+                "source_file": launch["file"],
+                "line": action.get("line"),
+                "lifecycle": action.get("lifecycle", False) or (definition or {}).get("lifecycle", False),
+                "active": True,
+                "resolved": action.get("resolved", False),
+                "fact_type": "detected",
+                "confidence": min(action.get("confidence", 0.8), (definition or {}).get("confidence", 1.0)),
+                "evidence": action["evidence"] + (definition or {}).get("evidence", []),
+                "parameters": launch_node_parameters(definition, action, launch["file"], namespace, root, package_reports),
+                **{key: [] for key in COMMUNICATION_KEYS},
+            }
+            for key in COMMUNICATION_KEYS:
+                for endpoint in (definition or {}).get(key, []):
+                    effective_name, resolved = effective_ros_name(endpoint.get("name"), namespace, node_name, action.get("remappings", []))
+                    instance[key].append(
+                        {
+                            **endpoint,
+                            "original_name": endpoint.get("name"),
+                            "name": effective_name,
+                            "resolved": endpoint.get("resolved", False) and resolved,
+                            "node_id": node_id,
+                            "node_name": node_name,
+                        }
+                    )
+            instances.append(instance)
+    for definition in definitions:
+        definition["active"] = definition["id"] not in matched_definitions
+        for key in COMMUNICATION_KEYS:
+            definition[key] = [{**endpoint, "node_id": definition["id"], "node_name": definition.get("name")} for endpoint in definition[key]]
+    return definitions + instances
+
+
+def communication_architecture(nodes: list[dict[str, Any]], left_key: str, right_key: str, left_label: str, right_label: str) -> list[dict[str, Any]]:
+    grouped: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: {left_label: [], right_label: []})
+    for node in nodes:
+        if not node.get("active"):
+            continue
+        for label, key in ((left_label, left_key), (right_label, right_key)):
+            for endpoint in node[key]:
+                if endpoint.get("resolved") and endpoint.get("name"):
+                    grouped[endpoint["name"]][label].append(endpoint)
+    results = []
+    for name, endpoints in sorted(grouped.items()):
+        types = sorted({item["type"] for values in endpoints.values() for item in values if item.get("type")})
+        evidence_items = [item["evidence"][0] for values in endpoints.values() for item in values]
+        results.append({"name": name, "types": types, **endpoints, "fact_type": "detected", "confidence": min((item["confidence"] for values in endpoints.values() for item in values), default=0.0), "evidence": evidence_items})
+    return results
+
+
+def infer_architecture(package_reports: list[dict[str, Any]], urdf_sensors: list[dict[str, Any]]) -> dict[str, Any]:
+    sensors = list(urdf_sensors)
+    actuators = []
+    algorithms = []
+    sensor_types = ("laserscan", "image", "camerainfo", "pointcloud", "imu", "navsat", "range", "fluidpressure", "magneticfield", "batterystate", "jointstate")
+    actuator_types = ("twist", "jointtrajectory", "ackermanndrive", "followjointtrajectory", "grippercommand")
+    for report in package_reports:
+        package_name = report["package"]["name"]
+        for endpoint in report["publishers"] + report["subscriptions"]:
+            combined = f"{endpoint.get('name') or ''} {endpoint.get('type') or ''}".lower()
+            if any(token in combined for token in sensor_types):
+                sensors.append({**endpoint, "package": package_name, "role": "sensor data interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.78), 2)})
+        for endpoint in report["publishers"] + report["action_clients"] + report["service_clients"]:
+            combined = f"{endpoint.get('name') or ''} {endpoint.get('type') or ''}".lower()
+            if any(token in combined for token in actuator_types) or any(token in combined for token in ("cmd_vel", "command", "motor", "gripper", "actuat")):
+                actuators.append({**endpoint, "package": package_name, "role": "command or actuation interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.75), 2)})
+        for plugin in report["plugins"]:
+            algorithms.append({**plugin, "package": package_name, "role": plugin.get("type") or "runtime plugin", "fact_type": "inferred", "confidence": 0.78})
+    return {"sensors": unique_findings(sensors), "actuation": unique_findings(actuators), "algorithms": unique_findings(algorithms)}
+
+
+def modification_points(package_reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    results = []
+    for report in package_reports:
+        package = report["package"]["name"]
+        if report["launch_files"]:
+            results.append({"task": "Change startup, composition, namespaces, or remappings", "path": report["launch_files"][0]["file"], "package": package, "reason": "launch entry point detected", "fact_type": "inferred", "confidence": 0.85, "evidence": report["launch_files"][0]["evidence"]})
+        if report["parameter_files"]:
+            results.append({"task": "Tune runtime behavior and algorithm settings", "path": report["parameter_files"][0]["file"], "package": package, "reason": "ROS parameter file detected", "fact_type": "inferred", "confidence": 0.82, "evidence": report["parameter_files"][0]["evidence"]})
+        if report["urdf_files"]:
+            results.append({"task": "Change robot geometry, joints, sensors, or frame structure", "path": report["urdf_files"][0], "package": package, "reason": "URDF/Xacro model detected", "fact_type": "inferred", "confidence": 0.9, "evidence": [evidence(report["urdf_files"][0], 1, "path_classifier", "URDF/Xacro")]})
+        if report["interfaces"]:
+            results.append({"task": "Change a ROS message, service, or action contract", "path": report["interfaces"][0]["file"], "package": package, "reason": "custom interface detected", "fact_type": "inferred", "confidence": 0.9, "evidence": report["interfaces"][0]["evidence"]})
+        entities = [item for key in ("publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients") for item in report[key]]
+        if entities:
+            source = max({item["file"] for item in entities}, key=lambda file: sum(item["file"] == file for item in entities))
+            source_entity = next(item for item in entities if item["file"] == source)
+            results.append({"task": "Change node behavior or ROS communication", "path": source, "package": package, "reason": "source file contains ROS entities", "fact_type": "inferred", "confidence": 0.8, "evidence": source_entity["evidence"]})
+    return results
+
+
+def run_diagnostics(data: dict[str, Any], uninstalled_targets: dict[str, set[str]], initial: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    diagnostics = list(initial)
+    reports = data["packages"]
+    if not reports:
+        diagnostics.append(diagnostic("RD001", "warning", "No ROS packages detected", "No usable package.xml was found outside ignored directories.", [], 1.0))
+        return diagnostics
+    by_name: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for report in reports:
+        by_name[report["package"]["name"]].append(report)
+    for name, duplicates in by_name.items():
+        if len(duplicates) > 1:
+            diagnostics.append(diagnostic("RD006", "error", "Duplicate package name", f"Package name '{name}' occurs in {len(duplicates)} source locations.", [item["package"]["evidence"][0] for item in duplicates], 1.0))
+    local_names = set(by_name)
+    for report in reports:
+        package = report["package"]
+        dependencies = declared_dependencies(package)
+        missing = sorted(name for name in report["referenced_packages"] if name != package["name"] and is_probable_ros_dependency(name, local_names) and name not in dependencies)
+        for name in missing:
+            diagnostics.append(diagnostic("RD101", "warning", "Likely missing package dependency", f"{package['name']} references '{name}' but package.xml does not declare it.", report["reference_evidence"].get(name, package["evidence"]), 0.78, package=package["name"]))
+        package_path = Path(data["repository"]["path"]) / package["path"]
+        if package.get("build_type") == "ament_cmake" and not (package_path / "CMakeLists.txt").exists():
+            diagnostics.append(diagnostic("RD102", "error", "Missing CMakeLists.txt", f"ament_cmake package {package['name']} has no CMakeLists.txt.", package["evidence"], 1.0, package=package["name"]))
+        if package.get("build_type") == "ament_python" and not any((package_path / candidate).exists() for candidate in ("setup.py", "setup.cfg", "pyproject.toml")):
+            diagnostics.append(diagnostic("RD103", "error", "Missing Python package definition", f"ament_python package {package['name']} has no setup.py, setup.cfg, or pyproject.toml.", package["evidence"], 1.0, package=package["name"]))
+        for target in sorted(uninstalled_targets.get(package["path"], set())):
+            executable = next((item for item in report["executables"] if item["name"] == target), None)
+            diagnostics.append(diagnostic("RD104", "warning", "CMake executable may not be installed", f"Target '{target}' is created but was not found in install(TARGETS ...).", executable["evidence"] if executable else package["evidence"], 0.9, package=package["name"]))
+    nodes_by_id = {node["id"]: node for node in data["architecture"]["nodes"]}
+
+    def endpoints_share_deployment(endpoint_groups: list[list[dict[str, Any]]]) -> bool:
+        endpoints = [endpoint for group in endpoint_groups for endpoint in group]
+        types_by_node: dict[str, set[str]] = defaultdict(set)
+        types_by_launch: dict[str, set[str]] = defaultdict(set)
+        for endpoint in endpoints:
+            node_id = endpoint.get("node_id")
+            type_name = endpoint.get("type")
+            if not node_id or not type_name:
+                continue
+            types_by_node[node_id].add(type_name)
+            node = nodes_by_id.get(node_id, {})
+            if node.get("origin") == "launch" and node.get("source_file"):
+                types_by_launch[node["source_file"]].add(type_name)
+        return any(len(types) > 1 for types in types_by_node.values()) or any(len(types) > 1 for types in types_by_launch.values())
+
+    for topic in data["architecture"]["topics"]:
+        qualified_types = {type_name for type_name in topic["types"] if "/" in type_name}
+        type_basenames = {re.split(r"[/.:]", type_name)[-1] for type_name in topic["types"]}
+        has_type_mismatch = len(qualified_types) > 1 or (not qualified_types and len(type_basenames) > 1)
+        if has_type_mismatch:
+            deployed_together = endpoints_share_deployment([topic["publishers"], topic["subscribers"]])
+            diagnostics.append(diagnostic("RD201", "error" if deployed_together else "warning", "Topic type mismatch", f"Topic '{topic['name']}' uses multiple static types: {', '.join(topic['types'])}." + ("" if deployed_together else " The endpoints are not proven to run together."), topic["evidence"], 0.96 if deployed_together else 0.72, topic=topic["name"]))
+        if not topic["publishers"] or not topic["subscribers"]:
+            missing_side = "publisher" if not topic["publishers"] else "subscriber"
+            diagnostics.append(diagnostic("RD202", "info", "Orphan topic endpoint", f"Topic '{topic['name']}' has no statically detected {missing_side}. Runtime or external nodes may provide it.", topic["evidence"], 0.62, topic=topic["name"]))
+        for publisher in topic["publishers"]:
+            for subscriber in topic["subscribers"]:
+                pub_qos = publisher.get("qos") or {}
+                sub_qos = subscriber.get("qos") or {}
+                incompatible = pub_qos.get("reliability") == "best_effort" and sub_qos.get("reliability") == "reliable"
+                incompatible = incompatible or (pub_qos.get("durability") == "volatile" and sub_qos.get("durability") == "transient_local")
+                if incompatible:
+                    diagnostics.append(diagnostic("RD203", "error", "Potential QoS incompatibility", f"Publisher and subscriber on '{topic['name']}' request incompatible QoS policies.", publisher["evidence"] + subscriber["evidence"], 0.9, topic=topic["name"]))
+    graph_checks = [
+        ("services", "servers", "clients", "service", "RD204", "RD205"),
+        ("actions", "servers", "clients", "action", "RD206", "RD207"),
+    ]
+    for graph_name, server_key, client_key, label, mismatch_code, orphan_code in graph_checks:
+        for interface in data["architecture"][graph_name]:
+            qualified_types = {type_name for type_name in interface["types"] if "/" in type_name}
+            type_basenames = {re.split(r"[/.:]", type_name)[-1] for type_name in interface["types"]}
+            if len(qualified_types) > 1 or (not qualified_types and len(type_basenames) > 1):
+                deployed_together = endpoints_share_deployment([interface[server_key], interface[client_key]])
+                diagnostics.append(
+                    diagnostic(
+                        mismatch_code,
+                        "error" if deployed_together else "warning",
+                        f"{label.title()} type mismatch",
+                        f"{label.title()} '{interface['name']}' uses multiple static types: {', '.join(interface['types'])}." + ("" if deployed_together else " The endpoints are not proven to run together."),
+                        interface["evidence"],
+                        0.96 if deployed_together else 0.72,
+                        interface=interface["name"],
+                    )
+                )
+            if not interface[server_key] or not interface[client_key]:
+                missing_side = "server" if not interface[server_key] else "client"
+                diagnostics.append(
+                    diagnostic(
+                        orphan_code,
+                        "info",
+                        f"Orphan {label} endpoint",
+                        f"{label.title()} '{interface['name']}' has no statically detected {missing_side}. Runtime or external nodes may provide it.",
+                        interface["evidence"],
+                        0.62,
+                        interface=interface["name"],
+                    )
+                )
+    root = Path(data["repository"]["path"])
+    local_executables = {report["package"]["name"]: {item["name"] for item in report["executables"]} for report in reports}
+    for launch_file in data["launch_graph"]["files"]:
+        for include in launch_file["includes"]:
+            if include.get("resolved") and include.get("exists") is False:
+                diagnostics.append(diagnostic("RD301", "error", "Broken launch include", f"Launch include '{include.get('target')}' does not resolve to a file in the repository.", include["evidence"], 0.94, launch_file=launch_file["file"]))
+        for action in launch_file["actions"]:
+            for parameter in action.get("parameters", []):
+                if parameter.get("kind") == "file" and parameter.get("resolved"):
+                    resolved, exists = resolve_repository_reference(parameter.get("value"), launch_file["file"], root, [report["package"] for report in reports])
+                    parameter["resolved_path"] = resolved
+                    parameter["exists"] = exists
+                    if exists is False:
+                        diagnostics.append(diagnostic("RD302", "error", "Missing launch parameter file", f"Parameter file '{parameter.get('value')}' does not exist.", action["evidence"], 0.94, launch_file=launch_file["file"]))
+            package_name = action.get("package")
+            executable = action.get("executable")
+            if action.get("kind") == "node" and package_name in local_executables and executable and action.get("resolved") and local_executables[package_name] and executable not in local_executables[package_name]:
+                diagnostics.append(diagnostic("RD303", "warning", "Unknown local launch executable", f"Launch file references {package_name}/{executable}, but that executable was not found in the package build metadata.", action["evidence"], 0.78, launch_file=launch_file["file"]))
+    parent_by_model_child: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for transform in data["architecture"]["tf"]["transforms"]:
+        if any(token in transform.get(field, "") for field in ("parent", "child") for token in ("${", "$(")):
+            continue
+        model_file = transform.get("file") or (transform.get("evidence") or [{}])[0].get("file", "")
+        parent_by_model_child[(model_file, transform["child"])].append(transform)
+    for (_, child), transforms in parent_by_model_child.items():
+        parents = {item["parent"] for item in transforms}
+        if len(parents) > 1:
+            diagnostics.append(diagnostic("RD401", "error", "TF child has multiple parents", f"Frame '{child}' has multiple URDF parents: {', '.join(sorted(parents))}.", [item["evidence"][0] for item in transforms], 0.98, frame=child))
+    graph = {transform["child"]: transform["parent"] for transform in data["architecture"]["tf"]["transforms"]}
+    for start in graph:
+        visited = set()
+        current = start
+        while current in graph:
+            if current in visited:
+                transform = next(item for item in data["architecture"]["tf"]["transforms"] if item["child"] == current)
+                diagnostics.append(diagnostic("RD402", "error", "TF cycle detected", f"URDF frame graph contains a cycle involving '{current}'.", transform["evidence"], 0.98, frame=current))
+                break
+            visited.add(current)
+            current = graph[current]
+    return sorted(diagnostics, key=lambda item: ({"error": 0, "warning": 1, "info": 2}.get(item["severity"], 3), item["code"], item["message"]))
+
+
+def empty_package_report(package: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "package": package,
+        "launch_files": [],
+        "launched_nodes": [],
+        "executables": [],
+        "node_names": [],
+        "publishers": [],
+        "subscriptions": [],
+        "service_servers": [],
+        "service_clients": [],
+        "action_servers": [],
+        "action_clients": [],
+        "declared_parameters": [],
+        "parameter_overrides": [],
+        "parameter_files": [],
+        "interfaces": [],
+        "interface_files": {},
+        "plugins": [],
+        "tf_broadcasters": [],
+        "urdf_files": [],
+        "referenced_packages": [],
+        "reference_evidence": {},
+    }
+
+
+def scan_repository(root: Path) -> dict[str, Any]:
+    root = root.resolve()
+    packages, initial_diagnostics = discover_packages(root)
+    reports = [empty_package_report(package) for package in packages]
+    report_by_path = {report["package"]["path"]: report for report in reports}
+    uninstalled_targets: dict[str, set[str]] = defaultdict(set)
+    launch_files = []
+    urdf_transforms = []
+    urdf_sensors = []
+    urdf_frames = set()
+    files = sorted(iter_repository_files(root))
+    for path in files:
+        package = package_for_path(path, packages, root)
+        report = report_by_path.get(package["path"]) if package else None
+        if any(path.name.endswith(suffix) for suffix in LAUNCH_SUFFIXES) and report:
+            actions, includes, arguments, issues = scan_launch_file(path, root)
+            initial_diagnostics.extend(issues)
+            for include in includes:
+                resolved, exists = resolve_repository_reference(include.get("target"), include["source_file"], root, packages)
+                include["resolved_path"] = resolved
+                include["exists"] = exists
+            entry = {"file": relative(path, root), "format": "python" if path.name.endswith(".py") else "yaml" if path.name.endswith((".yaml", ".yml")) else "xml", "package": package["name"], "actions": actions, "includes": includes, "arguments": arguments, "fact_type": "detected", "confidence": 1.0, "evidence": [evidence(relative(path, root), 1, "launch_classifier", path.name)]}
+            launch_files.append(entry)
+            report["launch_files"].append({"file": entry["file"], "format": entry["format"], "confidence": 1.0, "fact_type": "detected", "evidence": entry["evidence"]})
+            report["launched_nodes"].extend(action for action in actions if action["kind"] in {"node", "composable_node", "container"})
+            for action in actions:
+                if action.get("package"):
+                    report["referenced_packages"].append(action["package"])
+                    report["reference_evidence"].setdefault(action["package"], []).extend(action["evidence"])
+            continue
+        if not report:
+            continue
+        rel_file = relative(path, root)
+        if path.name == "CMakeLists.txt":
+            executables, references, uninstalled = scan_cmake(path, root)
+            report["executables"].extend(executables)
+            report["referenced_packages"].extend(references)
+            for reference in references:
+                report["reference_evidence"].setdefault(reference, []).append(evidence(rel_file, 1, "cmake_find_package", reference))
+            uninstalled_targets[package["path"]].update(uninstalled)
+        elif path.name == "setup.py":
+            report["executables"].extend(scan_python_setup(path, root))
+        elif path.name == "pyproject.toml":
+            report["executables"].extend(scan_python_pyproject(path, root))
+        elif path.name == "setup.cfg":
+            report["executables"].extend(scan_python_setup_cfg(path, root))
+        if path.suffix == ".py" and not path.name.endswith(".launch.py"):
+            code, references, issues = scan_python_source(path, root)
+            initial_diagnostics.extend(issues)
+            for key, values in code.items():
+                report.setdefault(key, []).extend(values)
+            report["referenced_packages"].extend(references)
+            for reference in references:
+                report["reference_evidence"].setdefault(reference, []).append(evidence(rel_file, 1, "python_import", reference))
+        elif path.suffix in SOURCE_EXTENSIONS and path.suffix != ".py":
+            code, references = scan_cpp_source(path, root)
+            for key, values in code.items():
+                report.setdefault(key, []).extend(values)
+            report["referenced_packages"].extend(references)
+            for reference in references:
+                report["reference_evidence"].setdefault(reference, []).append(evidence(rel_file, 1, "cpp_include", reference))
+        if path.suffix in {".msg", ".srv", ".action"}:
+            interface = parse_interface(path, root)
+            report["interfaces"].append(interface)
+            key = {".msg": "messages", ".srv": "services", ".action": "actions"}[path.suffix]
+            report["interface_files"].setdefault(key, []).append(interface["file"])
+        if path.suffix in {".yaml", ".yml"} and not path.name.endswith((".launch.yaml", ".launch.yml")):
+            overrides = scan_parameter_yaml(path, root)
+            if overrides:
+                report["parameter_overrides"].extend(overrides)
+                selectors = sorted(
+                    {
+                        (item.get("selector") or "/**", item.get("namespace") or "", item.get("selector_specificity", 0))
+                        for item in overrides
+                    }
+                )
+                report["parameter_files"].append(
+                    {
+                        "file": rel_file,
+                        "selectors": [
+                            {"selector": selector, "namespace": namespace, "specificity": specificity}
+                            for selector, namespace, specificity in selectors
+                        ],
+                        "parameters": overrides,
+                        "fact_type": "detected",
+                        "confidence": 0.96,
+                        "evidence": [evidence(rel_file, 1, "yaml_parameter_tree", "ros__parameters")],
+                    }
+                )
+            report["plugins"].extend(scan_plugins(path, root))
+        elif path.suffix == ".xml" and path.name != "package.xml":
+            report["plugins"].extend(scan_plugins(path, root))
+        if path.suffix in {".urdf", ".xacro"}:
+            transforms, sensors, frames = scan_urdf(path, root)
+            urdf_transforms.extend(transforms)
+            urdf_sensors.extend(sensors)
+            urdf_frames.update(frames)
+            report["urdf_files"].append(rel_file)
+    entity_keys = ("executables", "node_names", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "declared_parameters", "parameter_overrides", "plugins", "tf_broadcasters")
+    for report in reports:
+        cpp_paths = [path for path in files if package_for_path(path, packages, root) == report["package"] and path.suffix in SOURCE_EXTENSIONS and path.suffix != ".py"]
+        wrapper_models, factory_locations = discover_cpp_wrapper_models(cpp_paths, root)
+        method_wrapper_models, method_factory_locations = discover_cpp_method_wrapper_models(cpp_paths, root)
+        factory_locations.update(method_factory_locations)
+        wrapper_findings: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for path in cpp_paths:
+            for key, values in scan_cpp_wrapper_instantiations(path, root, wrapper_models).items():
+                wrapper_findings[key].extend(values)
+            for key, values in scan_cpp_method_wrapper_invocations(path, root, method_wrapper_models).items():
+                wrapper_findings[key].extend(values)
+        for key, values in wrapper_findings.items():
+            report[key] = [item for item in report[key] if (item.get("file"), item.get("line")) not in factory_locations]
+            report[key].extend(values)
+        for key in entity_keys:
+            report[key] = unique_findings(report[key])
+        report["launched_nodes"] = sorted(report["launched_nodes"], key=lambda item: (item["source_file"], item.get("line") or 0))
+        report["referenced_packages"] = sorted(set(report["referenced_packages"]))
+        report["urdf_files"] = sorted(set(report["urdf_files"]))
+    nodes = build_node_architecture(reports, launch_files, root)
+    topics = communication_architecture(nodes, "publishers", "subscriptions", "publishers", "subscribers")
+    services = communication_architecture(nodes, "service_servers", "service_clients", "servers", "clients")
+    actions = communication_architecture(nodes, "action_servers", "action_clients", "servers", "clients")
+    architecture = infer_architecture(reports, urdf_sensors)
+    architecture.update({"nodes": nodes, "topics": topics, "services": services, "actions": actions, "tf": {"frames": sorted(urdf_frames), "transforms": urdf_transforms, "broadcasters": [item for report in reports for item in report["tf_broadcasters"]]}, "modification_points": modification_points(reports)})
+    data = {
+        "schema_version": SCHEMA_VERSION,
+        "scanner": {"name": "robot-doctor-static", "version": SCANNER_VERSION, "mode": "static", "fact_model": ["detected", "inferred", "diagnostic"]},
+        "repository": {"path": str(root), "name": root.name},
+        "package_count": len(packages),
+        "packages": reports,
+        "launch_graph": {"files": launch_files, "edges": [{"from": launch["file"], "to": include.get("resolved_path") or include.get("target"), "resolved": include.get("exists") is True, "confidence": include["confidence"], "evidence": include["evidence"]} for launch in launch_files for include in launch["includes"]]},
+        "architecture": architecture,
+        "diagnostics": [],
+        "limitations": [
+            "Static analysis cannot prove runtime names, substitutions, remappings, plugin loading, or external nodes.",
+            "Orphan endpoint and dependency diagnostics may be satisfied by another repository or installed package.",
+            "YAML launch parsing covers standard declarative ROS 2 forms but preserves unsupported dynamic expressions as unresolved.",
+            "Runtime TF and QoS behavior should be confirmed on a running system.",
+        ],
+    }
+    data["diagnostics"] = run_diagnostics(data, uninstalled_targets, initial_diagnostics)
+    severities = defaultdict(int)
+    for item in data["diagnostics"]:
+        severities[item["severity"]] += 1
+    data["summary"] = {
+        "packages": len(reports),
+        "launch_files": len(launch_files),
+        "nodes": sum(len(report["node_names"]) + len(report["launched_nodes"]) for report in reports),
+        "topics": len(topics),
+        "services": sum(len(report["service_servers"]) + len(report["service_clients"]) for report in reports),
+        "actions": sum(len(report["action_servers"]) + len(report["action_clients"]) for report in reports),
+        "diagnostics": dict(sorted(severities.items())),
+    }
+    return data
+
+
+def entity_label(entity: dict[str, Any]) -> str:
+    name = entity.get("name") or "<unresolved>"
+    type_name = f" [{entity['type']}]" if entity.get("type") else ""
+    confidence = f" confidence={entity.get('confidence', 0):.2f}"
+    location = f" ({entity.get('file')}:{entity.get('line')})" if entity.get("file") else ""
+    return f"{name}{type_name}{confidence}{location}"
+
+
+def print_text_report(data: dict[str, Any]) -> None:
+    print(f"Repository: {data['repository']['path']}")
+    print(f"Schema: {data['schema_version']}  Scanner: {data['scanner']['version']} ({data['scanner']['mode']})")
+    print(f"Packages: {data['package_count']}")
+    for report in data["packages"]:
+        package = report["package"]
+        print(f"\n{package['name']} ({package['path']})")
+        print(f"  build_type: {package.get('build_type') or '<unspecified>'}")
+        for key in ("executables", "node_names", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "declared_parameters"):
+            if report[key]:
+                print(f"  {key}:")
+                for item in report[key]:
+                    print(f"    - {entity_label(item)}")
+        if report["launch_files"]:
+            print("  launch_files:")
+            for item in report["launch_files"]:
+                print(f"    - {item['file']} [{item['format']}]")
+    if data["diagnostics"]:
+        print("\nDiagnostics:")
+        for item in data["diagnostics"]:
+            print(f"  - {item['severity'].upper()} {item['code']}: {item['message']} (confidence={item['confidence']:.2f})")
+    print("\nLimitations:")
+    for limitation in data["limitations"]:
+        print(f"  - {limitation}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Statically discover and diagnose a ROS 2 repository or workspace.")
+    parser.add_argument("repository", nargs="?", default=".", help="Repository or workspace path")
+    parser.add_argument("--json", action="store_true", help="Emit the stable JSON schema instead of text")
+    parser.add_argument("--output", "-o", help="Write output to a file")
+    args = parser.parse_args()
+    root = Path(args.repository)
+    if not root.exists() or not root.is_dir():
+        parser.error(f"repository path is not a directory: {root}")
+    data = scan_repository(root)
+    if args.json:
+        output = json.dumps(data, indent=2, sort_keys=True)
+    else:
+        from io import StringIO
+
+        buffer = StringIO()
+        original = sys.stdout
+        sys.stdout = buffer
+        try:
+            print_text_report(data)
+        finally:
+            sys.stdout = original
+        output = buffer.getvalue().rstrip()
+    if args.output:
+        Path(args.output).write_text(output + "\n", encoding="utf-8")
+    else:
+        print(output)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

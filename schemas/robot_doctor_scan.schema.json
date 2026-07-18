@@ -1,0 +1,522 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://robot-doctor.local/schemas/robot_doctor_scan.schema.json",
+  "title": "Robot Doctor ROS 2 Static Scan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "scanner",
+    "repository",
+    "package_count",
+    "packages",
+    "launch_graph",
+    "architecture",
+    "diagnostics",
+    "limitations",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.1.0"},
+    "scanner": {"$ref": "#/$defs/scanner"},
+    "repository": {"$ref": "#/$defs/repository"},
+    "package_count": {"type": "integer", "minimum": 0},
+    "packages": {"type": "array", "items": {"$ref": "#/$defs/packageReport"}},
+    "launch_graph": {"$ref": "#/$defs/launchGraph"},
+    "architecture": {"$ref": "#/$defs/architecture"},
+    "diagnostics": {"type": "array", "items": {"$ref": "#/$defs/diagnostic"}},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "summary": {"$ref": "#/$defs/summary"}
+  },
+  "$defs": {
+    "nullableString": {"type": ["string", "null"]},
+    "nullableInteger": {"type": ["integer", "null"]},
+    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+    "factType": {"enum": ["detected", "inferred", "diagnostic"]},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line", "extractor", "snippet"],
+      "properties": {
+        "file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "extractor": {"type": "string"},
+        "snippet": {"type": "string"}
+      }
+    },
+    "evidenceList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/evidence"}
+    },
+    "scanner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "mode", "fact_model"],
+      "properties": {
+        "name": {"type": "string"},
+        "version": {"type": "string"},
+        "mode": {"const": "static"},
+        "fact_model": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/factType"}
+        }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "name"],
+      "properties": {
+        "path": {"type": "string"},
+        "name": {"type": "string"}
+      }
+    },
+    "package": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "path", "version", "description", "build_type", "dependencies", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "path": {"type": "string"},
+        "version": {"$ref": "#/$defs/nullableString"},
+        "description": {"$ref": "#/$defs/nullableString"},
+        "build_type": {"$ref": "#/$defs/nullableString"},
+        "dependencies": {
+          "type": "object",
+          "additionalProperties": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+        },
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": ["kind", "name", "type", "file", "line", "fact_type", "confidence", "resolved", "evidence"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "name": {"$ref": "#/$defs/nullableString"},
+        "type": {"$ref": "#/$defs/nullableString"},
+        "file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "fact_type": {"$ref": "#/$defs/factType"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "evidence": {"$ref": "#/$defs/evidenceList"},
+        "qos": {"type": ["object", "null"]},
+        "default": {},
+        "default_resolved": {"type": "boolean"},
+        "value": {},
+        "class": {"type": "string"},
+        "lifecycle": {"type": "boolean"},
+        "role": {"type": "string"},
+        "package": {"type": "string"},
+        "wrapper": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "launchFileSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "format", "confidence", "fact_type", "evidence"],
+      "properties": {
+        "file": {"type": "string"},
+        "format": {"enum": ["python", "xml", "yaml"]},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "fact_type": {"const": "detected"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "remapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "resolved"],
+      "properties": {
+        "from": {"$ref": "#/$defs/nullableString"},
+        "to": {"$ref": "#/$defs/nullableString"},
+        "resolved": {"type": "boolean"}
+      }
+    },
+    "parameterSource": {
+      "type": "object",
+      "required": ["kind", "value", "resolved"],
+      "properties": {
+        "kind": {"enum": ["file", "inline", "expression"]},
+        "value": {},
+        "name": {"$ref": "#/$defs/nullableString"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "resolved_path": {"$ref": "#/$defs/nullableString"},
+        "exists": {"type": ["boolean", "null"]}
+      },
+      "additionalProperties": false
+    },
+    "launchAction": {
+      "type": "object",
+      "required": ["kind", "source_file", "line", "fact_type", "confidence", "resolved", "evidence"],
+      "properties": {
+        "kind": {"enum": ["node", "composable_node", "container", "namespace", "remap"]},
+        "package": {"$ref": "#/$defs/nullableString"},
+        "executable": {"$ref": "#/$defs/nullableString"},
+        "name": {"$ref": "#/$defs/nullableString"},
+        "namespace": {"$ref": "#/$defs/nullableString"},
+        "condition": {"$ref": "#/$defs/nullableString"},
+        "value": {"$ref": "#/$defs/nullableString"},
+        "remappings": {"type": "array", "items": {"$ref": "#/$defs/remapping"}},
+        "parameters": {"type": "array", "items": {"$ref": "#/$defs/parameterSource"}},
+        "lifecycle": {"type": "boolean"},
+        "composed": {"type": "boolean"},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "source_file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      },
+      "additionalProperties": false
+    },
+    "launchInclude": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target", "resolved_path", "exists", "arguments", "condition", "fact_type", "confidence", "resolved", "source_file", "line", "evidence"],
+      "properties": {
+        "target": {"$ref": "#/$defs/nullableString"},
+        "resolved_path": {"$ref": "#/$defs/nullableString"},
+        "exists": {"type": ["boolean", "null"]},
+        "arguments": {},
+        "condition": {"$ref": "#/$defs/nullableString"},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "source_file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "launchArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "default", "description", "fact_type", "confidence", "resolved", "source_file", "line", "evidence"],
+      "properties": {
+        "name": {"$ref": "#/$defs/nullableString"},
+        "default": {"$ref": "#/$defs/nullableString"},
+        "description": {"$ref": "#/$defs/nullableString"},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "source_file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "launchFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "format", "package", "actions", "includes", "arguments", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "file": {"type": "string"},
+        "format": {"enum": ["python", "xml", "yaml"]},
+        "package": {"type": "string"},
+        "actions": {"type": "array", "items": {"$ref": "#/$defs/launchAction"}},
+        "includes": {"type": "array", "items": {"$ref": "#/$defs/launchInclude"}},
+        "arguments": {"type": "array", "items": {"$ref": "#/$defs/launchArgument"}},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "launchEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "resolved", "confidence", "evidence"],
+      "properties": {
+        "from": {"type": "string"},
+        "to": {"$ref": "#/$defs/nullableString"},
+        "resolved": {"type": "boolean"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "launchGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["files", "edges"],
+      "properties": {
+        "files": {"type": "array", "items": {"$ref": "#/$defs/launchFile"}},
+        "edges": {"type": "array", "items": {"$ref": "#/$defs/launchEdge"}}
+      }
+    },
+    "parameterFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "selectors", "parameters", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "file": {"type": "string"},
+        "selectors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["selector", "namespace", "specificity"],
+            "properties": {
+              "selector": {"type": "string"},
+              "namespace": {"type": "string"},
+              "specificity": {"type": "integer", "minimum": 0, "maximum": 2}
+            }
+          }
+        },
+        "parameters": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "interfaceField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "name", "constant", "line"],
+      "properties": {
+        "type": {"type": "string"},
+        "name": {"type": "string"},
+        "constant": {"$ref": "#/$defs/nullableString"},
+        "line": {"type": "integer", "minimum": 1}
+      }
+    },
+    "interfaceSection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fields"],
+      "properties": {
+        "name": {"type": "string"},
+        "fields": {"type": "array", "items": {"$ref": "#/$defs/interfaceField"}}
+      }
+    },
+    "interface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "file", "sections", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "kind": {"enum": ["message", "srv", "action"]},
+        "name": {"type": "string"},
+        "file": {"type": "string"},
+        "sections": {"type": "array", "items": {"$ref": "#/$defs/interfaceSection"}},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "packageReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package", "launch_files", "launched_nodes", "executables", "node_names",
+        "publishers", "subscriptions", "service_servers", "service_clients",
+        "action_servers", "action_clients", "declared_parameters", "parameter_overrides",
+        "parameter_files", "interfaces", "interface_files", "plugins", "tf_broadcasters",
+        "urdf_files", "referenced_packages", "reference_evidence"
+      ],
+      "properties": {
+        "package": {"$ref": "#/$defs/package"},
+        "launch_files": {"type": "array", "items": {"$ref": "#/$defs/launchFileSummary"}},
+        "launched_nodes": {"type": "array", "items": {"$ref": "#/$defs/launchAction"}},
+        "executables": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "node_names": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "publishers": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "subscriptions": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "service_servers": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "service_clients": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "action_servers": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "action_clients": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "declared_parameters": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "parameter_overrides": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "parameter_files": {"type": "array", "items": {"$ref": "#/$defs/parameterFile"}},
+        "interfaces": {"type": "array", "items": {"$ref": "#/$defs/interface"}},
+        "interface_files": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+        "plugins": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "tf_broadcasters": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "urdf_files": {"type": "array", "items": {"type": "string"}},
+        "referenced_packages": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "reference_evidence": {"type": "object", "additionalProperties": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}}
+      }
+    },
+    "topicEndpoint": {
+      "allOf": [
+        {"$ref": "#/$defs/finding"},
+        {"type": "object", "required": ["package"], "properties": {"package": {"type": "string"}}}
+      ]
+    },
+    "nodeParameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "value", "type", "source", "selector", "precedence_rank", "effective", "confidence", "evidence"],
+      "properties": {
+        "name": {"$ref": "#/$defs/nullableString"},
+        "value": {},
+        "type": {"$ref": "#/$defs/nullableString"},
+        "source": {"enum": ["code_default", "yaml_override", "launch_inline"]},
+        "selector": {"$ref": "#/$defs/nullableString"},
+        "precedence_rank": {"type": "integer", "minimum": 0},
+        "effective": {"type": "boolean"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "name", "namespace", "package", "executable", "executables", "class", "origin",
+        "definition_id", "source_file", "line", "lifecycle", "active", "resolved", "fact_type",
+        "confidence", "evidence", "parameters", "publishers", "subscriptions", "service_servers",
+        "service_clients", "action_servers", "action_clients"
+      ],
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"$ref": "#/$defs/nullableString"},
+        "namespace": {"type": "string"},
+        "package": {"$ref": "#/$defs/nullableString"},
+        "executable": {"$ref": "#/$defs/nullableString"},
+        "executables": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "class": {"$ref": "#/$defs/nullableString"},
+        "origin": {"enum": ["source", "source_scope", "launch"]},
+        "definition_id": {"$ref": "#/$defs/nullableString"},
+        "source_file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "lifecycle": {"type": "boolean"},
+        "active": {"type": "boolean"},
+        "resolved": {"type": "boolean"},
+        "fact_type": {"$ref": "#/$defs/factType"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"},
+        "parameters": {"type": "array", "items": {"$ref": "#/$defs/nodeParameter"}},
+        "publishers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "subscriptions": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "service_servers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "service_clients": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "action_servers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "action_clients": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}}
+      }
+    },
+    "topic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "types", "publishers", "subscribers", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "name": {"type": "string"},
+        "types": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "publishers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "subscribers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "serviceActionGraph": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "types", "servers", "clients", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "name": {"type": "string"},
+        "types": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "servers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "clients": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "tfTransform": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parent", "child", "joint", "file", "line", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "parent": {"type": "string"},
+        "child": {"type": "string"},
+        "joint": {"type": "string"},
+        "file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "tf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frames", "transforms", "broadcasters"],
+      "properties": {
+        "frames": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "transforms": {"type": "array", "items": {"$ref": "#/$defs/tfTransform"}},
+        "broadcasters": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+      }
+    },
+    "modificationPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task", "path", "package", "reason", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "task": {"type": "string"},
+        "path": {"type": "string"},
+        "package": {"type": "string"},
+        "reason": {"type": "string"},
+        "fact_type": {"const": "inferred"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sensors", "actuation", "algorithms", "nodes", "topics", "services", "actions", "tf", "modification_points"],
+      "properties": {
+        "sensors": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "actuation": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "algorithms": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+        "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+        "topics": {"type": "array", "items": {"$ref": "#/$defs/topic"}},
+        "services": {"type": "array", "items": {"$ref": "#/$defs/serviceActionGraph"}},
+        "actions": {"type": "array", "items": {"$ref": "#/$defs/serviceActionGraph"}},
+        "tf": {"$ref": "#/$defs/tf"},
+        "modification_points": {"type": "array", "items": {"$ref": "#/$defs/modificationPoint"}}
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "title", "message", "fact_type", "confidence", "evidence"],
+      "properties": {
+        "code": {"type": "string", "pattern": "^RD[0-9]{3}$"},
+        "severity": {"enum": ["error", "warning", "info"]},
+        "title": {"type": "string"},
+        "message": {"type": "string"},
+        "fact_type": {"const": "diagnostic"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
+      },
+      "additionalProperties": true
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packages", "launch_files", "nodes", "topics", "services", "actions", "diagnostics"],
+      "properties": {
+        "packages": {"type": "integer", "minimum": 0},
+        "launch_files": {"type": "integer", "minimum": 0},
+        "nodes": {"type": "integer", "minimum": 0},
+        "topics": {"type": "integer", "minimum": 0},
+        "services": {"type": "integer", "minimum": 0},
+        "actions": {"type": "integer", "minimum": 0},
+        "diagnostics": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "error": {"type": "integer", "minimum": 0},
+            "warning": {"type": "integer", "minimum": 0},
+            "info": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    }
+  }
+}
