@@ -1,0 +1,8 @@
+<launch>
+  <arg name="enabled" default="true"/>
+  <node pkg="probe_cpp" exec="probe_cpp_node" name="cpp_probe" namespace="drivers" if="$(var enabled)">
+    <remap from="imu" to="sensors/imu"/>
+    <param from="../config/probe.yaml"/>
+  </node>
+  <include file="yaml_child.launch.yaml"/>
+</launch>

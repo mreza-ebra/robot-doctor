@@ -1,0 +1,16 @@
+probe_node:
+  ros__parameters:
+    rate: 20
+    mode: test
+
+/**:
+  ros__parameters:
+    global_enabled: true
+
+/robot/sensors/python_probe:
+  ros__parameters:
+    controller:
+      gain: 1.5
+      limits:
+        maximum: 2
+    labels: [front, primary]

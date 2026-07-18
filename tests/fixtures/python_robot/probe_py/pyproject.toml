@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "probe-py"
+version = "0.1.0"
+
+[project.scripts]
+keyword_node = "probe_py.keyword_node:main"

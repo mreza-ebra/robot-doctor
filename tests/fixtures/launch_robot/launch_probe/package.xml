@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>launch_probe</name>
+  <version>0.1.0</version>
+  <description>Launch scanner fixture</description>
+  <maintainer email="fixture@example.com">Fixture</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>launch</depend>
+  <depend>launch_ros</depend>
+  <depend>ament_index_python</depend>
+  <depend>probe_py</depend>
+  <depend>probe_cpp</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

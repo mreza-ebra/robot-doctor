@@ -1,0 +1,14 @@
+launch:
+  - arg:
+      name: namespace
+      default: robot
+  - node:
+      pkg: probe_py
+      exec: probe_node
+      name: yaml_probe
+      namespace: sensors
+      parameters: ../config/probe.yaml
+  - composable_node:
+      pkg: probe_cpp
+      plugin: probe_cpp::Probe
+      name: yaml_component

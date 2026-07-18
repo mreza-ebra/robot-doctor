@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "repositories": [
+    {
+      "name": "turtlebot4",
+      "category": "mobile_robot_cpp",
+      "url": "https://github.com/turtlebot/turtlebot4.git",
+      "revision": "7fd29fb420e906f3aca4a904adb54b69b11c7c00",
+      "path": "real_repositories/turtlebot4",
+      "expected": {
+        "packages": 4,
+        "launch_files": 4,
+        "nodes": 3,
+        "topics": 19,
+        "services": 6,
+        "actions": 6,
+        "max_errors": 0
+      }
+    },
+    {
+      "name": "ros2_examples",
+      "category": "python_heavy",
+      "url": "https://github.com/ros2/examples.git",
+      "revision": "07008852303f2a35a91c65d78046b274a35477ea",
+      "path": "real_repositories/examples",
+      "expected": {
+        "packages": 22,
+        "launch_files": 0,
+        "nodes": 64,
+        "topics": 14,
+        "services": 10,
+        "actions": 15,
+        "max_errors": 0
+      }
+    },
+    {
+      "name": "ros2_demos",
+      "category": "composable_nodes",
+      "url": "https://github.com/ros2/demos.git",
+      "revision": "37e25e0dece32f972b3cc8677b6aab3e891a9365",
+      "path": "real_repositories/demos",
+      "expected": {
+        "packages": 21,
+        "launch_files": 0,
+        "nodes": 99,
+        "topics": 19,
+        "services": 19,
+        "actions": 4,
+        "max_errors": 0
+      }
+    },
+    {
+      "name": "moveit2",
+      "category": "manipulation",
+      "url": "https://github.com/moveit/moveit2.git",
+      "revision": "4d841063574c31a21f69ae12a39fddb77a7eb984",
+      "path": "real_repositories/moveit2",
+      "expected": {
+        "packages": 41,
+        "launch_files": 12,
+        "nodes": 83,
+        "topics": 36,
+        "services": 43,
+        "actions": 15,
+        "max_errors": 0
+      }
+    },
+    {
+      "name": "ros2_control",
+      "category": "control_framework",
+      "url": "https://github.com/ros-controls/ros2_control.git",
+      "revision": "2db79031a5464b0a3737d2c4de7f68c64ee93ef4",
+      "path": "real_repositories/ros2_control",
+      "expected": {
+        "packages": 11,
+        "launch_files": 1,
+        "nodes": 50,
+        "topics": 4,
+        "services": 47,
+        "actions": 0,
+        "max_errors": 0
+      }
+    }
+  ],
+  "workspaces": [
+    {
+      "name": "ros2_ecosystem",
+      "category": "large_multi_repository_workspace",
+      "path": "real_repositories",
+      "members": ["ros2_examples", "ros2_demos", "moveit2", "ros2_control"],
+      "expected": {
+        "packages": 95,
+        "launch_files": 13,
+        "nodes": 296,
+        "topics": 71,
+        "services": 119,
+        "actions": 34,
+        "max_errors": 0
+      }
+    }
+  ]
+}
