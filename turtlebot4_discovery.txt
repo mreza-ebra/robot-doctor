@@ -1,0 +1,110 @@
+Repository: /Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4
+Schema: 1.1.0  Scanner: 0.4.0 (static)
+Packages: 4
+
+turtlebot4_description (turtlebot4_description)
+  build_type: ament_cmake
+  launch_files:
+    - turtlebot4_description/launch/robot_description.launch.py [python]
+
+turtlebot4_msgs (turtlebot4_msgs)
+  build_type: ament_cmake
+
+turtlebot4_navigation (turtlebot4_navigation)
+  build_type: ament_cmake
+  subscriptions:
+    - dock_status [irobot_create_msgs/msg/DockStatus] confidence=1.00 (turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:58)
+    - initialpose [geometry_msgs/msg/PoseWithCovarianceStamped] confidence=1.00 (turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:63)
+  action_clients:
+    - undock [irobot_create_msgs/action/Undock] confidence=1.00 (turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:68)
+    - dock [irobot_create_msgs/action/Dock] confidence=1.00 (turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:69)
+  launch_files:
+    - turtlebot4_navigation/launch/localization.launch.py [python]
+    - turtlebot4_navigation/launch/nav2.launch.py [python]
+    - turtlebot4_navigation/launch/slam.launch.py [python]
+
+turtlebot4_node (turtlebot4_node)
+  build_type: ament_cmake
+  executables:
+    - turtlebot4_node [cmake] confidence=0.95 (turtlebot4_node/CMakeLists.txt:58)
+  node_names:
+    - turtlebot4_node [rclcpp] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:49)
+  publishers:
+    - hmi/display [turtlebot4_msgs/msg/UserDisplay] confidence=1.00 (turtlebot4_node/src/display.cpp:48)
+    - hmi/led/_power [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:47)
+    - hmi/led/_motors [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:48)
+    - hmi/led/_comms [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:49)
+    - hmi/led/_wifi [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:50)
+    - hmi/led/_battery [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:51)
+    - hmi/led/_user1 [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:52)
+    - hmi/led/_user2 [std_msgs/msg/Int32] confidence=0.90 (turtlebot4_node/src/leds.cpp:53)
+    - ip [std_msgs/msg/String] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:149)
+    - function_calls [std_msgs/msg/String] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:153)
+  subscriptions:
+    - interface_buttons [irobot_create_msgs/msg/InterfaceButtons] confidence=1.00 (turtlebot4_node/src/buttons.cpp:37)
+    - joy [sensor_msgs/msg/Joy] confidence=1.00 (turtlebot4_node/src/buttons.cpp:42)
+    - hmi/buttons [turtlebot4_msgs/msg/UserButton] confidence=1.00 (turtlebot4_node/src/buttons.cpp:48)
+    - hmi/display/message [std_msgs/msg/String] confidence=1.00 (turtlebot4_node/src/display.cpp:51)
+    - hmi/led [turtlebot4_msgs/msg/UserLed] confidence=1.00 (turtlebot4_node/src/leds.cpp:42)
+    - battery_state [sensor_msgs/msg/BatteryState] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:133)
+    - dock_status [irobot_create_msgs/msg/DockStatus] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:138)
+    - wheel_status [irobot_create_msgs/msg/WheelStatus] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:143)
+  service_clients:
+    - e_stop [EStop] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:164)
+    - robot_power [Power] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:165)
+    - start_motor [EmptySrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:166)
+    - stop_motor [EmptySrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:169)
+    - oakd/start_camera [TriggerSrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:172)
+    - oakd/stop_camera [TriggerSrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:175)
+  action_clients:
+    - dock [Dock] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:158)
+    - undock [Undock] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:159)
+    - wall_follow [WallFollow] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:160)
+    - led_animation [LedAnimation] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:161)
+  declared_parameters:
+    - model confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:60)
+    - wifi.interface confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:73)
+    - power_saver confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:76)
+    - button_parameters_[static_cast<Turtlebot4ButtonEnum>(i)] confidence=0.48 (turtlebot4_node/src/turtlebot4.cpp:116)
+    - menu.entries confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:125)
+
+Diagnostics:
+  - WARNING RD101: turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. (confidence=0.78)
+  - WARNING RD101: turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. (confidence=0.78)
+  - WARNING RD101: turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. (confidence=0.78)
+  - WARNING RD101: turtlebot4_navigation references 'rclpy' but package.xml does not declare it. (confidence=0.78)
+  - INFO RD202: Topic 'battery_state' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'dock_status' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'function_calls' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/buttons' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/display' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/display/message' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_battery' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_comms' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_motors' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_power' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_user1' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_user2' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'hmi/led/_wifi' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'initialpose' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'interface_buttons' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'ip' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'joy' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD202: Topic 'wheel_status' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD205: Service 'e_stop' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD205: Service 'oakd/start_camera' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD205: Service 'oakd/stop_camera' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD205: Service 'robot_power' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD205: Service 'start_motor' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD205: Service 'stop_motor' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD207: Action 'dock' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD207: Action 'led_animation' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD207: Action 'undock' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+  - INFO RD207: Action 'wall_follow' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+
+Limitations:
+  - Static analysis cannot prove runtime names, substitutions, remappings, plugin loading, or external nodes.
+  - Orphan endpoint and dependency diagnostics may be satisfied by another repository or installed package.
+  - YAML launch parsing covers standard declarative ROS 2 forms but preserves unsupported dynamic expressions as unresolved.
+  - Runtime TF and QoS behavior should be confirmed on a running system.
