@@ -46,7 +46,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "Dock",
+            "type": "irobot_create_msgs/action/Dock",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -79,7 +79,6 @@
         "name": "dock",
         "servers": [],
         "types": [
-          "Dock",
           "irobot_create_msgs/action/Dock"
         ]
       },
@@ -105,7 +104,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "LedAnimation",
+            "type": "irobot_create_msgs/action/LedAnimation",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -132,7 +131,7 @@
         "name": "led_animation",
         "servers": [],
         "types": [
-          "LedAnimation"
+          "irobot_create_msgs/action/LedAnimation"
         ]
       },
       {
@@ -180,7 +179,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "Undock",
+            "type": "irobot_create_msgs/action/Undock",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -213,7 +212,6 @@
         "name": "undock",
         "servers": [],
         "types": [
-          "Undock",
           "irobot_create_msgs/action/Undock"
         ]
       },
@@ -239,7 +237,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "WallFollow",
+            "type": "irobot_create_msgs/action/WallFollow",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -266,7 +264,7 @@
         "name": "wall_follow",
         "servers": [],
         "types": [
-          "WallFollow"
+          "irobot_create_msgs/action/WallFollow"
         ]
       }
     ],
@@ -323,7 +321,7 @@
         "package": "turtlebot4_node",
         "resolved": true,
         "role": "command or actuation interface",
-        "type": "EmptySrv",
+        "type": "std_srvs/srv/Empty",
         "wrapper": {
           "class": "Turtlebot4EmptyService",
           "factory_evidence": [
@@ -361,7 +359,7 @@
         "package": "turtlebot4_node",
         "resolved": true,
         "role": "command or actuation interface",
-        "type": "EmptySrv",
+        "type": "std_srvs/srv/Empty",
         "wrapper": {
           "class": "Turtlebot4EmptyService",
           "factory_evidence": [
@@ -1055,7 +1053,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "Dock",
+            "type": "irobot_create_msgs/action/Dock",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -1088,7 +1086,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "Undock",
+            "type": "irobot_create_msgs/action/Undock",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -1121,7 +1119,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "WallFollow",
+            "type": "irobot_create_msgs/action/WallFollow",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -1154,7 +1152,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "LedAnimation",
+            "type": "irobot_create_msgs/action/LedAnimation",
             "wrapper": {
               "class": "Turtlebot4Action",
               "factory_evidence": [
@@ -1623,7 +1621,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "EStop",
+            "type": "irobot_create_msgs/srv/EStop",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -1662,7 +1660,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "Power",
+            "type": "irobot_create_msgs/srv/RobotPower",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -1701,7 +1699,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "EmptySrv",
+            "type": "std_srvs/srv/Empty",
             "wrapper": {
               "class": "Turtlebot4EmptyService",
               "factory_evidence": [
@@ -1740,7 +1738,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "EmptySrv",
+            "type": "std_srvs/srv/Empty",
             "wrapper": {
               "class": "Turtlebot4EmptyService",
               "factory_evidence": [
@@ -1779,7 +1777,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "TriggerSrv",
+            "type": "std_srvs/srv/Trigger",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -1818,7 +1816,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "TriggerSrv",
+            "type": "std_srvs/srv/Trigger",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -2247,7 +2245,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "EStop",
+            "type": "irobot_create_msgs/srv/EStop",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -2280,7 +2278,7 @@
         "name": "e_stop",
         "servers": [],
         "types": [
-          "EStop"
+          "irobot_create_msgs/srv/EStop"
         ]
       },
       {
@@ -2305,7 +2303,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "TriggerSrv",
+            "type": "std_srvs/srv/Trigger",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -2338,7 +2336,7 @@
         "name": "oakd/start_camera",
         "servers": [],
         "types": [
-          "TriggerSrv"
+          "std_srvs/srv/Trigger"
         ]
       },
       {
@@ -2363,7 +2361,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "TriggerSrv",
+            "type": "std_srvs/srv/Trigger",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -2396,7 +2394,7 @@
         "name": "oakd/stop_camera",
         "servers": [],
         "types": [
-          "TriggerSrv"
+          "std_srvs/srv/Trigger"
         ]
       },
       {
@@ -2421,7 +2419,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "Power",
+            "type": "irobot_create_msgs/srv/RobotPower",
             "wrapper": {
               "class": "Turtlebot4Service",
               "factory_evidence": [
@@ -2454,7 +2452,7 @@
         "name": "robot_power",
         "servers": [],
         "types": [
-          "Power"
+          "irobot_create_msgs/srv/RobotPower"
         ]
       },
       {
@@ -2479,7 +2477,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "EmptySrv",
+            "type": "std_srvs/srv/Empty",
             "wrapper": {
               "class": "Turtlebot4EmptyService",
               "factory_evidence": [
@@ -2512,7 +2510,7 @@
         "name": "start_motor",
         "servers": [],
         "types": [
-          "EmptySrv"
+          "std_srvs/srv/Empty"
         ]
       },
       {
@@ -2537,7 +2535,7 @@
             "node_name": "turtlebot4_node",
             "package": "turtlebot4_node",
             "resolved": true,
-            "type": "EmptySrv",
+            "type": "std_srvs/srv/Empty",
             "wrapper": {
               "class": "Turtlebot4EmptyService",
               "factory_evidence": [
@@ -2570,7 +2568,7 @@
         "name": "stop_motor",
         "servers": [],
         "types": [
-          "EmptySrv"
+          "std_srvs/srv/Empty"
         ]
       }
     ],
@@ -3814,10 +3812,25 @@
       }
     ]
   },
+  "configuration": {
+    "dependency_mode": "direct",
+    "ignore_dependencies": [],
+    "ignore_dependency_pairs": [],
+    "max_file_size_bytes": 5242880,
+    "max_files": 100000,
+    "max_repository_entries": 250000,
+    "max_total_size_bytes": 268435456,
+    "minimum_diagnostic_confidence": 0.0,
+    "severity_overrides": {},
+    "suppress_diagnostics": [],
+    "suppressed_diagnostics": 0
+  },
   "diagnostics": [
     {
       "code": "RD101",
-      "confidence": 0.78,
+      "confidence": 0.58,
+      "dependency": "action_msgs",
+      "direct_reference": false,
       "evidence": [
         {
           "extractor": "python_import",
@@ -3827,14 +3840,16 @@
         }
       ],
       "fact_type": "diagnostic",
-      "message": "turtlebot4_navigation references 'action_msgs' but package.xml does not declare it.",
+      "message": "turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
-      "severity": "warning",
-      "title": "Likely missing package dependency"
+      "severity": "info",
+      "title": "Possible undeclared dependency"
     },
     {
       "code": "RD101",
-      "confidence": 0.78,
+      "confidence": 0.58,
+      "dependency": "geometry_msgs",
+      "direct_reference": false,
       "evidence": [
         {
           "extractor": "python_import",
@@ -3844,14 +3859,16 @@
         }
       ],
       "fact_type": "diagnostic",
-      "message": "turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it.",
+      "message": "turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
-      "severity": "warning",
-      "title": "Likely missing package dependency"
+      "severity": "info",
+      "title": "Possible undeclared dependency"
     },
     {
       "code": "RD101",
-      "confidence": 0.78,
+      "confidence": 0.58,
+      "dependency": "irobot_create_msgs",
+      "direct_reference": false,
       "evidence": [
         {
           "extractor": "python_import",
@@ -3861,14 +3878,16 @@
         }
       ],
       "fact_type": "diagnostic",
-      "message": "turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it.",
+      "message": "turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
-      "severity": "warning",
-      "title": "Likely missing package dependency"
+      "severity": "info",
+      "title": "Possible undeclared dependency"
     },
     {
       "code": "RD101",
-      "confidence": 0.78,
+      "confidence": 0.58,
+      "dependency": "rclpy",
+      "direct_reference": false,
       "evidence": [
         {
           "extractor": "python_import",
@@ -3878,10 +3897,10 @@
         }
       ],
       "fact_type": "diagnostic",
-      "message": "turtlebot4_navigation references 'rclpy' but package.xml does not declare it.",
+      "message": "turtlebot4_navigation references 'rclpy' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
-      "severity": "warning",
-      "title": "Likely missing package dependency"
+      "severity": "info",
+      "title": "Possible undeclared dependency"
     },
     {
       "code": "RD202",
@@ -14247,7 +14266,7 @@
           "line": 158,
           "name": "dock",
           "resolved": true,
-          "type": "Dock",
+          "type": "irobot_create_msgs/action/Dock",
           "wrapper": {
             "class": "Turtlebot4Action",
             "factory_evidence": [
@@ -14277,7 +14296,7 @@
           "line": 159,
           "name": "undock",
           "resolved": true,
-          "type": "Undock",
+          "type": "irobot_create_msgs/action/Undock",
           "wrapper": {
             "class": "Turtlebot4Action",
             "factory_evidence": [
@@ -14307,7 +14326,7 @@
           "line": 160,
           "name": "wall_follow",
           "resolved": true,
-          "type": "WallFollow",
+          "type": "irobot_create_msgs/action/WallFollow",
           "wrapper": {
             "class": "Turtlebot4Action",
             "factory_evidence": [
@@ -14337,7 +14356,7 @@
           "line": 161,
           "name": "led_animation",
           "resolved": true,
-          "type": "LedAnimation",
+          "type": "irobot_create_msgs/action/LedAnimation",
           "wrapper": {
             "class": "Turtlebot4Action",
             "factory_evidence": [
@@ -15168,7 +15187,7 @@
           "line": 164,
           "name": "e_stop",
           "resolved": true,
-          "type": "EStop",
+          "type": "irobot_create_msgs/srv/EStop",
           "wrapper": {
             "class": "Turtlebot4Service",
             "factory_evidence": [
@@ -15204,7 +15223,7 @@
           "line": 165,
           "name": "robot_power",
           "resolved": true,
-          "type": "Power",
+          "type": "irobot_create_msgs/srv/RobotPower",
           "wrapper": {
             "class": "Turtlebot4Service",
             "factory_evidence": [
@@ -15240,7 +15259,7 @@
           "line": 166,
           "name": "start_motor",
           "resolved": true,
-          "type": "EmptySrv",
+          "type": "std_srvs/srv/Empty",
           "wrapper": {
             "class": "Turtlebot4EmptyService",
             "factory_evidence": [
@@ -15276,7 +15295,7 @@
           "line": 169,
           "name": "stop_motor",
           "resolved": true,
-          "type": "EmptySrv",
+          "type": "std_srvs/srv/Empty",
           "wrapper": {
             "class": "Turtlebot4EmptyService",
             "factory_evidence": [
@@ -15312,7 +15331,7 @@
           "line": 172,
           "name": "oakd/start_camera",
           "resolved": true,
-          "type": "TriggerSrv",
+          "type": "std_srvs/srv/Trigger",
           "wrapper": {
             "class": "Turtlebot4Service",
             "factory_evidence": [
@@ -15348,7 +15367,7 @@
           "line": 175,
           "name": "oakd/stop_camera",
           "resolved": true,
-          "type": "TriggerSrv",
+          "type": "std_srvs/srv/Trigger",
           "wrapper": {
             "class": "Turtlebot4Service",
             "factory_evidence": [
@@ -15562,7 +15581,9 @@
   ],
   "repository": {
     "name": "turtlebot4",
-    "path": "/Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4"
+    "path": "/Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4",
+    "source": "/Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4",
+    "source_type": "local"
   },
   "scanner": {
     "fact_model": [
@@ -15572,19 +15593,21 @@
     ],
     "mode": "static",
     "name": "robot-doctor-static",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
-  "schema_version": "1.1.0",
+  "schema_version": "1.2.0",
   "summary": {
     "actions": 6,
     "diagnostics": {
-      "info": 29,
-      "warning": 4
+      "info": 33
     },
     "launch_files": 4,
     "nodes": 3,
     "packages": 4,
+    "resolved_entities": 38,
     "services": 6,
-    "topics": 19
+    "skipped_files": 0,
+    "topics": 19,
+    "unresolved_entities": 1
   }
 }

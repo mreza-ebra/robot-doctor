@@ -16,8 +16,12 @@ def main() -> int:
     required = {
         "robot_doctor/__init__.py",
         "robot_doctor/__main__.py",
+        "robot_doctor/config.py",
+        "robot_doctor/intake.py",
         "robot_doctor/scanner.py",
         "robot_doctor/overviews.py",
+        "robot_doctor/web.py",
+        "robot_doctor/schemas/robot_doctor_config.schema.json",
         "robot_doctor/schemas/robot_doctor_scan.schema.json",
     }
     missing = sorted(required - names)

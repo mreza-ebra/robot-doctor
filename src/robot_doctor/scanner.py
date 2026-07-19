@@ -6,14 +6,18 @@ from __future__ import annotations
 import argparse
 import ast
 import configparser
+import contextvars
 import json
 import os
 import re
 import sys
 import xml.etree.ElementTree as ET
 from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any, Callable, Iterable, Iterator
+
+from .config import ConfigError, ScanConfig, load_scan_config
 
 try:
     import tomllib
@@ -21,8 +25,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.1.0"
-SCANNER_VERSION = "0.4.0"
+SCHEMA_VERSION = "1.2.0"
+SCANNER_VERSION = "0.5.0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
     ".hg",
@@ -63,6 +67,65 @@ KNOWN_ROS_IMPORTS = {
     "visualization_msgs",
 }
 
+ProgressCallback = Callable[[dict[str, Any]], None]
+CancelCheck = Callable[[], bool]
+
+
+class ScanCancelled(RuntimeError):
+    pass
+
+
+@dataclass
+class ScanSession:
+    root: Path
+    config: ScanConfig
+    progress: ProgressCallback | None = None
+    cancel_check: CancelCheck | None = None
+    input_diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    cached_text: dict[Path, str] = field(default_factory=dict)
+    skipped_files: set[Path] = field(default_factory=set)
+    recorded_issues: set[tuple[str, str]] = field(default_factory=set)
+    files_read: int = 0
+    bytes_read: int = 0
+    repository_entries_seen: int = 0
+
+    def check_cancelled(self) -> None:
+        if self.cancel_check and self.cancel_check():
+            raise ScanCancelled("scan cancelled")
+
+    def emit(self, stage: str, current: int, total: int, path: Path | None = None, message: str = "") -> None:
+        self.check_cancelled()
+        if self.progress:
+            self.progress(
+                {
+                    "stage": stage,
+                    "current": current,
+                    "total": total,
+                    "path": relative(path, self.root) if path else None,
+                    "message": message,
+                }
+            )
+
+    def record_input_issue(self, code: str, severity: str, title: str, message: str, path: Path, snippet: str) -> None:
+        key = (code, str(path))
+        if key in self.recorded_issues:
+            return
+        self.recorded_issues.add(key)
+        self.input_diagnostics.append(
+            diagnostic(
+                code,
+                severity,
+                title,
+                message,
+                [evidence(relative(path, self.root), None, "safe_reader", snippet)],
+                1.0,
+                file=relative(path, self.root),
+            )
+        )
+
+
+_ACTIVE_SCAN_SESSION: contextvars.ContextVar[ScanSession | None] = contextvars.ContextVar("robot_doctor_scan_session", default=None)
+
 
 def relative(path: Path, root: Path) -> str:
     try:
@@ -72,7 +135,78 @@ def relative(path: Path, root: Path) -> str:
 
 
 def read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8", errors="replace")
+    session = _ACTIVE_SCAN_SESSION.get()
+    resolved = path.resolve()
+    if session is None:
+        return path.read_text(encoding="utf-8", errors="replace")
+    session.check_cancelled()
+    if resolved in session.cached_text:
+        return session.cached_text[resolved]
+    if resolved in session.skipped_files:
+        return ""
+    if session.files_read >= session.config.max_files:
+        session.skipped_files.add(resolved)
+        session.record_input_issue(
+            "RD007",
+            "warning",
+            "File-count limit reached",
+            f"Scanning stopped reading new files after {session.config.max_files} files.",
+            session.root,
+            str(session.config.max_files),
+        )
+        return ""
+    try:
+        size = path.stat().st_size
+    except OSError as exc:
+        session.skipped_files.add(resolved)
+        session.record_input_issue(
+            "RD004",
+            "warning",
+            "Unreadable source file",
+            f"{relative(path, session.root)} could not be inspected and was skipped: {exc}.",
+            path,
+            str(exc),
+        )
+        return ""
+    if size > session.config.max_file_size_bytes:
+        session.skipped_files.add(resolved)
+        session.record_input_issue(
+            "RD005",
+            "warning",
+            "Oversized source file",
+            f"{relative(path, session.root)} is {size} bytes and exceeds the {session.config.max_file_size_bytes}-byte limit.",
+            path,
+            str(size),
+        )
+        return ""
+    if session.bytes_read + size > session.config.max_total_size_bytes:
+        session.skipped_files.add(resolved)
+        session.record_input_issue(
+            "RD009",
+            "warning",
+            "Total input-size limit reached",
+            f"Reading {relative(path, session.root)} would exceed the {session.config.max_total_size_bytes}-byte total input limit.",
+            session.root,
+            str(session.config.max_total_size_bytes),
+        )
+        return ""
+    try:
+        value = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        session.skipped_files.add(resolved)
+        session.record_input_issue(
+            "RD004",
+            "warning",
+            "Unreadable source file",
+            f"{relative(path, session.root)} could not be read and was skipped: {exc}.",
+            path,
+            str(exc),
+        )
+        return ""
+    session.files_read += 1
+    session.bytes_read += size
+    session.cached_text[resolved] = value
+    return value
 
 
 def line_number(text: str, offset: int) -> int:
@@ -144,29 +278,94 @@ def unique_findings(items: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(result, key=lambda item: (item.get("file") or "", item.get("line") or 0, item.get("kind") or ""))
 
 
-def iter_repository_files(root: Path) -> Iterator[Path]:
+def iter_repository_files(root: Path, *, max_entries: int | None = None) -> Iterator[Path]:
     """Walk source files while honoring colcon artifacts and ignore markers."""
     if any((root / marker).exists() for marker in IGNORE_MARKERS):
         return
-    for current, directories, filenames in os.walk(root):
-        current_path = Path(current)
+    session = _ACTIVE_SCAN_SESSION.get()
+    entry_limit = max_entries
+    if session:
+        entry_limit = (
+            min(entry_limit, session.config.max_repository_entries)
+            if entry_limit is not None
+            else session.config.max_repository_entries
+        )
+    local_entries_seen = 0
+    directories = [root]
+    while directories:
+        current_path = directories.pop()
+        if session:
+            session.check_cancelled()
         if current_path != root and any((current_path / marker).exists() for marker in IGNORE_MARKERS):
-            directories[:] = []
             continue
-        directories[:] = [
-            name
-            for name in directories
-            if name not in IGNORED_DIRECTORY_NAMES
-            and not any((current_path / name / marker).exists() for marker in IGNORE_MARKERS)
-        ]
-        for filename in filenames:
-            if filename not in IGNORE_MARKERS:
-                yield current_path / filename
+        try:
+            entries = os.scandir(current_path)
+        except OSError as exc:
+            if session:
+                session.record_input_issue(
+                    "RD004",
+                    "warning",
+                    "Unreadable directory",
+                    f"{relative(current_path, root)} could not be traversed and was skipped: {exc}.",
+                    current_path,
+                    str(exc),
+                )
+            continue
+        with entries:
+            for entry in entries:
+                if session:
+                    session.check_cancelled()
+                    session.repository_entries_seen += 1
+                    entries_seen = session.repository_entries_seen
+                else:
+                    local_entries_seen += 1
+                    entries_seen = local_entries_seen
+                if entry_limit is not None and entries_seen > entry_limit:
+                    if session:
+                        session.record_input_issue(
+                            "RD010",
+                            "warning",
+                            "Repository-entry limit reached",
+                            f"Repository traversal stopped after {entry_limit} files and directories.",
+                            root,
+                            str(entry_limit),
+                        )
+                    return
+                path = Path(entry.path)
+                try:
+                    if entry.is_symlink():
+                        continue
+                    if entry.is_dir(follow_symlinks=False):
+                        if entry.name not in IGNORED_DIRECTORY_NAMES and not any((path / marker).exists() for marker in IGNORE_MARKERS):
+                            directories.append(path)
+                    elif entry.name not in IGNORE_MARKERS:
+                        yield path
+                except OSError as exc:
+                    if session:
+                        session.record_input_issue(
+                            "RD004",
+                            "warning",
+                            "Unreadable repository entry",
+                            f"{relative(path, root)} could not be inspected and was skipped: {exc}.",
+                            path,
+                            str(exc),
+                        )
 
 
-def parse_package_xml(path: Path, root: Path) -> dict[str, Any]:
-    tree = ET.parse(path)
-    package_node = tree.getroot()
+def is_scan_candidate(path: Path) -> bool:
+    return (
+        path.name in {"package.xml", "CMakeLists.txt", "setup.py", "setup.cfg", "pyproject.toml"}
+        or any(path.name.endswith(suffix) for suffix in LAUNCH_SUFFIXES)
+        or path.suffix in SOURCE_EXTENSIONS | {".msg", ".srv", ".action", ".yaml", ".yml", ".xml", ".urdf", ".xacro"}
+    )
+
+
+def parse_package_xml(path: Path, root: Path) -> dict[str, Any] | None:
+    content = read_text(path)
+    session = _ACTIVE_SCAN_SESSION.get()
+    if session and path.resolve() in session.skipped_files:
+        return None
+    package_node = ET.fromstring(content)
 
     def text(tag: str) -> str | None:
         node = package_node.find(tag)
@@ -197,12 +396,50 @@ def parse_package_xml(path: Path, root: Path) -> dict[str, Any]:
     }
 
 
-def discover_packages(root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def collect_scan_files(root: Path) -> list[Path]:
+    session = _ACTIVE_SCAN_SESSION.get()
+    if session is None:
+        return sorted(path for path in iter_repository_files(root) if is_scan_candidate(path))
+    scan_files = []
+    session.emit("enumerate_repository", 0, session.config.max_repository_entries, message="Enumerating bounded repository input")
+    for path in iter_repository_files(root):
+        if is_scan_candidate(path):
+            if len(scan_files) >= session.config.max_files:
+                session.record_input_issue(
+                    "RD007",
+                    "warning",
+                    "File-count limit reached",
+                    f"Repository discovery stopped after {session.config.max_files} scan candidate files.",
+                    root,
+                    str(session.config.max_files),
+                )
+                break
+            scan_files.append(path)
+        if session.repository_entries_seen % 500 == 0:
+            session.emit(
+                "enumerate_repository",
+                session.repository_entries_seen,
+                session.config.max_repository_entries,
+                path,
+                "Enumerating bounded repository input",
+            )
+    session.emit(
+        "enumerate_repository",
+        session.repository_entries_seen,
+        session.config.max_repository_entries,
+        message=f"Selected {len(scan_files)} scan candidate file(s)",
+    )
+    return sorted(scan_files)
+
+
+def discover_packages(root: Path, scan_files: Iterable[Path]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     packages: list[dict[str, Any]] = []
     parse_issues: list[dict[str, Any]] = []
-    for path in sorted(file for file in iter_repository_files(root) if file.name == "package.xml"):
+    for path in (file for file in scan_files if file.name == "package.xml"):
         try:
-            packages.append(parse_package_xml(path, root))
+            package = parse_package_xml(path, root)
+            if package:
+                packages.append(package)
         except ET.ParseError as exc:
             parse_issues.append(
                 diagnostic(
@@ -237,6 +474,23 @@ def canonical_ros_type(value: str | None) -> str | None:
         return value
     normalized = value.strip().replace("::", "/")
     return re.sub(r"\.(msg|srv|action)\.", r"/\1/", normalized)
+
+
+def cpp_type_aliases(text: str) -> dict[str, str]:
+    return {
+        match.group(1): canonical_ros_type(match.group(2).strip()) or match.group(2).strip()
+        for match in re.finditer(r"\busing\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([^;]+);", text)
+    }
+
+
+def resolve_cpp_type(value: str | None, aliases: dict[str, str]) -> str | None:
+    canonical = canonical_ros_type(value)
+    resolved = aliases.get(canonical or "", canonical)
+    adapter = re.fullmatch(r"rclcpp/TypeAdapter<(.+)>", resolved or "")
+    if adapter:
+        arguments = split_cpp_template_arguments(adapter.group(1))
+        return canonical_ros_type(arguments[-1]) if arguments else resolved
+    return resolved
 
 
 def call_name(node: ast.AST) -> str:
@@ -587,6 +841,7 @@ def scan_cpp_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, An
     rel_file = relative(path, root)
     items: dict[str, list[dict[str, Any]]] = defaultdict(list)
     class_ranges = parse_cpp_classes(path, root)
+    type_aliases = cpp_type_aliases(text)
 
     def enclosing_class(offset: int) -> str | None:
         match = next((item for item in class_ranges if item["body_offset"] <= offset < item["end"]), None)
@@ -611,7 +866,7 @@ def scan_cpp_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, An
             finding(
                 "action_server" if match.group(1) == "server" else "action_client",
                 name,
-                canonical_ros_type(compact_snippet(match.group(2))),
+                resolve_cpp_type(compact_snippet(match.group(2)), type_aliases),
                 rel_file,
                 line_number(text, match.start()),
                 "cpp_call_parser",
@@ -643,7 +898,7 @@ def scan_cpp_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, An
                 finding(
                     kind,
                     name,
-                    canonical_ros_type(compact_snippet(match.group(1))) if match.group(1) else None,
+                    resolve_cpp_type(compact_snippet(match.group(1)), type_aliases) if match.group(1) else None,
                     rel_file,
                     line_number(text, match.start()),
                     "cpp_call_parser",
@@ -882,6 +1137,7 @@ def scan_cpp_wrapper_instantiations(path: Path, root: Path, models: dict[str, di
     text = read_text(path)
     rel_file = relative(path, root)
     class_ranges = parse_cpp_classes(path, root)
+    type_aliases = cpp_type_aliases(text)
 
     def enclosing_class(offset: int) -> str | None:
         match = next((item for item in class_ranges if item["body_offset"] <= offset < item["end"]), None)
@@ -904,7 +1160,7 @@ def scan_cpp_wrapper_instantiations(path: Path, root: Path, models: dict[str, di
         item = finding(
             model["kind"],
             name,
-            canonical_ros_type(type_arguments[model["type_parameter_index"]]),
+            resolve_cpp_type(type_arguments[model["type_parameter_index"]], type_aliases),
             rel_file,
             line,
             "cpp_wrapper_resolution",
@@ -928,6 +1184,7 @@ def discover_cpp_method_wrapper_models(paths: list[Path], root: Path) -> tuple[d
     for path in paths:
         for class_info in parse_cpp_classes(path, root):
             class_body = class_info["body"]
+            type_aliases = cpp_type_aliases(class_info["text"])
             for method_match in method_pattern.finditer(class_body):
                 method_name = method_match.group(1)
                 signature_start = method_match.start(1)
@@ -974,7 +1231,7 @@ def discover_cpp_method_wrapper_models(paths: list[Path], root: Path) -> tuple[d
                         "collection": collection,
                         "kind": kind,
                         "name_index": parameters.index(factory_name),
-                        "type": canonical_ros_type(factory_type),
+                        "type": resolve_cpp_type(factory_type, type_aliases),
                         "file": class_info["file"],
                         "line": line,
                         "evidence": [evidence(class_info["file"], line, "cpp_method_wrapper_factory", block)],
@@ -1623,7 +1880,13 @@ def scan_launch_yaml(path: Path, root: Path) -> tuple[list[dict[str, Any]], list
     return actions, includes, arguments, []
 
 
-def resolve_repository_reference(expression: str | None, source_file: str, root: Path, packages: list[dict[str, Any]]) -> tuple[str | None, bool | None]:
+def resolve_repository_reference(
+    expression: str | None,
+    source_file: str,
+    root: Path,
+    packages: list[dict[str, Any]],
+    repository_files: Iterable[Path],
+) -> tuple[str | None, bool | None]:
     if not expression or "$(var " in expression or "LaunchConfiguration" in expression:
         return None, None
     value = expression
@@ -1639,7 +1902,7 @@ def resolve_repository_reference(expression: str | None, source_file: str, root:
     if candidate.exists():
         return relative(candidate, root), True
     basename = Path(value).name
-    matches = [path for path in iter_repository_files(root) if path.name == basename]
+    matches = [path for path in repository_files if path.name == basename]
     if len(matches) == 1:
         return relative(matches[0], root), True
     return relative(candidate, root), False
@@ -1855,6 +2118,7 @@ def launch_node_parameters(
     namespace: str,
     root: Path,
     package_reports: list[dict[str, Any]],
+    repository_files: Iterable[Path],
 ) -> list[dict[str, Any]]:
     candidates = [dict(item) for item in (definition or {}).get("parameters", [])]
     packages = [item["package"] for item in package_reports]
@@ -1863,7 +2127,13 @@ def launch_node_parameters(
     for source in action.get("parameters", []):
         order += 1
         if source.get("kind") == "file":
-            resolved_path, exists = resolve_repository_reference(str(source.get("value")), launch_file, root, packages)
+            resolved_path, exists = resolve_repository_reference(
+                str(source.get("value")),
+                launch_file,
+                root,
+                packages,
+                repository_files,
+            )
             source["resolved_path"] = resolved_path
             source["exists"] = exists
             parameter_file = parameter_files.get(resolved_path or "")
@@ -1908,7 +2178,12 @@ def launch_node_parameters(
     return candidates
 
 
-def build_node_architecture(package_reports: list[dict[str, Any]], launch_files: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]:
+def build_node_architecture(
+    package_reports: list[dict[str, Any]],
+    launch_files: list[dict[str, Any]],
+    root: Path,
+    repository_files: Iterable[Path],
+) -> list[dict[str, Any]]:
     definitions = source_node_definitions(package_reports)
     instances = []
     matched_definitions = set()
@@ -1948,7 +2223,15 @@ def build_node_architecture(package_reports: list[dict[str, Any]], launch_files:
                 "fact_type": "detected",
                 "confidence": min(action.get("confidence", 0.8), (definition or {}).get("confidence", 1.0)),
                 "evidence": action["evidence"] + (definition or {}).get("evidence", []),
-                "parameters": launch_node_parameters(definition, action, launch["file"], namespace, root, package_reports),
+                "parameters": launch_node_parameters(
+                    definition,
+                    action,
+                    launch["file"],
+                    namespace,
+                    root,
+                    package_reports,
+                    repository_files,
+                ),
                 **{key: [] for key in COMMUNICATION_KEYS},
             }
             for key in COMMUNICATION_KEYS:
@@ -2030,8 +2313,15 @@ def modification_points(package_reports: list[dict[str, Any]]) -> list[dict[str,
     return results
 
 
-def run_diagnostics(data: dict[str, Any], uninstalled_targets: dict[str, set[str]], initial: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def run_diagnostics(
+    data: dict[str, Any],
+    uninstalled_targets: dict[str, set[str]],
+    initial: list[dict[str, Any]],
+    repository_files: Iterable[Path],
+) -> list[dict[str, Any]]:
     diagnostics = list(initial)
+    session = _ACTIVE_SCAN_SESSION.get()
+    config = session.config if session else ScanConfig()
     reports = data["packages"]
     if not reports:
         diagnostics.append(diagnostic("RD001", "warning", "No ROS packages detected", "No usable package.xml was found outside ignored directories.", [], 1.0))
@@ -2048,7 +2338,26 @@ def run_diagnostics(data: dict[str, Any], uninstalled_targets: dict[str, set[str
         dependencies = declared_dependencies(package)
         missing = sorted(name for name in report["referenced_packages"] if name != package["name"] and is_probable_ros_dependency(name, local_names) and name not in dependencies)
         for name in missing:
-            diagnostics.append(diagnostic("RD101", "warning", "Likely missing package dependency", f"{package['name']} references '{name}' but package.xml does not declare it.", report["reference_evidence"].get(name, package["evidence"]), 0.78, package=package["name"]))
+            if config.dependency_mode == "off" or config.ignores_dependency(package["name"], name):
+                continue
+            dependency_evidence = report["reference_evidence"].get(name, package["evidence"])
+            extractors = {item.get("extractor") for item in dependency_evidence}
+            direct_reference = "cmake_find_package" in extractors or any("launch" in str(extractor) for extractor in extractors)
+            warning = config.dependency_mode == "all" or direct_reference
+            diagnostics.append(
+                diagnostic(
+                    "RD101",
+                    "warning" if warning else "info",
+                    "Likely missing package dependency" if warning else "Possible undeclared dependency",
+                    f"{package['name']} references '{name}' but package.xml does not declare it."
+                    + ("" if warning else " This reference is indirect and may be a namespace, test-only import, or transitive dependency."),
+                    dependency_evidence,
+                    0.82 if warning else 0.58,
+                    package=package["name"],
+                    dependency=name,
+                    direct_reference=direct_reference,
+                )
+            )
         package_path = Path(data["repository"]["path"]) / package["path"]
         if package.get("build_type") == "ament_cmake" and not (package_path / "CMakeLists.txt").exists():
             diagnostics.append(diagnostic("RD102", "error", "Missing CMakeLists.txt", f"ament_cmake package {package['name']} has no CMakeLists.txt.", package["evidence"], 1.0, package=package["name"]))
@@ -2135,7 +2444,13 @@ def run_diagnostics(data: dict[str, Any], uninstalled_targets: dict[str, set[str
         for action in launch_file["actions"]:
             for parameter in action.get("parameters", []):
                 if parameter.get("kind") == "file" and parameter.get("resolved"):
-                    resolved, exists = resolve_repository_reference(parameter.get("value"), launch_file["file"], root, [report["package"] for report in reports])
+                    resolved, exists = resolve_repository_reference(
+                        parameter.get("value"),
+                        launch_file["file"],
+                        root,
+                        [report["package"] for report in reports],
+                        repository_files,
+                    )
                     parameter["resolved_path"] = resolved
                     parameter["exists"] = exists
                     if exists is False:
@@ -2194,9 +2509,37 @@ def empty_package_report(package: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def scan_repository(root: Path) -> dict[str, Any]:
+def scan_repository(
+    root: Path,
+    *,
+    config: ScanConfig | None = None,
+    progress: ProgressCallback | None = None,
+    cancel_check: CancelCheck | None = None,
+) -> dict[str, Any]:
     root = root.resolve()
-    packages, initial_diagnostics = discover_packages(root)
+    selected_config = config or load_scan_config(repository=root)
+    selected_config.validate()
+    session = ScanSession(root=root, config=selected_config, progress=progress, cancel_check=cancel_check)
+    token = _ACTIVE_SCAN_SESSION.set(session)
+    try:
+        return _scan_repository(root)
+    finally:
+        _ACTIVE_SCAN_SESSION.reset(token)
+
+
+def load_scan_config_for_input(path: Path | None, repository: Path, source_type: str) -> ScanConfig:
+    config_repository = repository if source_type == "local" else None
+    return load_scan_config(path, config_repository)
+
+
+def _scan_repository(root: Path) -> dict[str, Any]:
+    session = _ACTIVE_SCAN_SESSION.get()
+    if session is None:
+        raise RuntimeError("scan session is not initialized")
+    scan_files = collect_scan_files(root)
+    session.emit("discover_packages", 0, 1, message="Discovering ROS packages")
+    packages, initial_diagnostics = discover_packages(root, scan_files)
+    session.emit("discover_packages", 1, 1, message=f"Discovered {len(packages)} package(s)")
     reports = [empty_package_report(package) for package in packages]
     report_by_path = {report["package"]["path"]: report for report in reports}
     uninstalled_targets: dict[str, set[str]] = defaultdict(set)
@@ -2204,15 +2547,18 @@ def scan_repository(root: Path) -> dict[str, Any]:
     urdf_transforms = []
     urdf_sensors = []
     urdf_frames = set()
-    files = sorted(iter_repository_files(root))
-    for path in files:
+    for file_index, path in enumerate(scan_files, start=1):
+        session.emit("scan_files", file_index - 1, len(scan_files), path, "Scanning source file")
+        read_text(path)
+        if path.resolve() in session.skipped_files:
+            continue
         package = package_for_path(path, packages, root)
         report = report_by_path.get(package["path"]) if package else None
         if any(path.name.endswith(suffix) for suffix in LAUNCH_SUFFIXES) and report:
             actions, includes, arguments, issues = scan_launch_file(path, root)
             initial_diagnostics.extend(issues)
             for include in includes:
-                resolved, exists = resolve_repository_reference(include.get("target"), include["source_file"], root, packages)
+                resolved, exists = resolve_repository_reference(include.get("target"), include["source_file"], root, packages, scan_files)
                 include["resolved_path"] = resolved
                 include["exists"] = exists
             entry = {"file": relative(path, root), "format": "python" if path.name.endswith(".py") else "yaml" if path.name.endswith((".yaml", ".yml")) else "xml", "package": package["name"], "actions": actions, "includes": includes, "arguments": arguments, "fact_type": "detected", "confidence": 1.0, "evidence": [evidence(relative(path, root), 1, "launch_classifier", path.name)]}
@@ -2294,12 +2640,13 @@ def scan_repository(root: Path) -> dict[str, Any]:
             report["urdf_files"].append(rel_file)
     entity_keys = ("executables", "node_names", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "declared_parameters", "parameter_overrides", "plugins", "tf_broadcasters")
     for report in reports:
-        cpp_paths = [path for path in files if package_for_path(path, packages, root) == report["package"] and path.suffix in SOURCE_EXTENSIONS and path.suffix != ".py"]
+        cpp_paths = [path for path in scan_files if path.resolve() not in session.skipped_files and package_for_path(path, packages, root) == report["package"] and path.suffix in SOURCE_EXTENSIONS and path.suffix != ".py"]
         wrapper_models, factory_locations = discover_cpp_wrapper_models(cpp_paths, root)
         method_wrapper_models, method_factory_locations = discover_cpp_method_wrapper_models(cpp_paths, root)
         factory_locations.update(method_factory_locations)
         wrapper_findings: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for path in cpp_paths:
+            session.check_cancelled()
             for key, values in scan_cpp_wrapper_instantiations(path, root, wrapper_models).items():
                 wrapper_findings[key].extend(values)
             for key, values in scan_cpp_method_wrapper_invocations(path, root, method_wrapper_models).items():
@@ -2312,7 +2659,7 @@ def scan_repository(root: Path) -> dict[str, Any]:
         report["launched_nodes"] = sorted(report["launched_nodes"], key=lambda item: (item["source_file"], item.get("line") or 0))
         report["referenced_packages"] = sorted(set(report["referenced_packages"]))
         report["urdf_files"] = sorted(set(report["urdf_files"]))
-    nodes = build_node_architecture(reports, launch_files, root)
+    nodes = build_node_architecture(reports, launch_files, root, scan_files)
     topics = communication_architecture(nodes, "publishers", "subscriptions", "publishers", "subscribers")
     services = communication_architecture(nodes, "service_servers", "service_clients", "servers", "clients")
     actions = communication_architecture(nodes, "action_servers", "action_clients", "servers", "clients")
@@ -2322,6 +2669,7 @@ def scan_repository(root: Path) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "scanner": {"name": "robot-doctor-static", "version": SCANNER_VERSION, "mode": "static", "fact_model": ["detected", "inferred", "diagnostic"]},
         "repository": {"path": str(root), "name": root.name},
+        "configuration": session.config.to_output(),
         "package_count": len(packages),
         "packages": reports,
         "launch_graph": {"files": launch_files, "edges": [{"from": launch["file"], "to": include.get("resolved_path") or include.get("target"), "resolved": include.get("exists") is True, "confidence": include["confidence"], "evidence": include["evidence"]} for launch in launch_files for include in launch["includes"]]},
@@ -2334,10 +2682,15 @@ def scan_repository(root: Path) -> dict[str, Any]:
             "Runtime TF and QoS behavior should be confirmed on a running system.",
         ],
     }
-    data["diagnostics"] = run_diagnostics(data, uninstalled_targets, initial_diagnostics)
+    initial_diagnostics.extend(session.input_diagnostics)
+    raw_diagnostics = run_diagnostics(data, uninstalled_targets, initial_diagnostics, scan_files)
+    data["diagnostics"], suppressed_diagnostics = session.config.apply_diagnostic_policy(raw_diagnostics)
+    data["configuration"] = session.config.to_output(suppressed_diagnostics)
     severities = defaultdict(int)
     for item in data["diagnostics"]:
         severities[item["severity"]] += 1
+    inventory_keys = ("executables", "node_names", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "declared_parameters")
+    inventory_entities = [item for report in reports for key in inventory_keys for item in report[key]]
     data["summary"] = {
         "packages": len(reports),
         "launch_files": len(launch_files),
@@ -2345,8 +2698,12 @@ def scan_repository(root: Path) -> dict[str, Any]:
         "topics": len(topics),
         "services": sum(len(report["service_servers"]) + len(report["service_clients"]) for report in reports),
         "actions": sum(len(report["action_servers"]) + len(report["action_clients"]) for report in reports),
+        "resolved_entities": sum(1 for item in inventory_entities if item.get("resolved", True)),
+        "unresolved_entities": sum(1 for item in inventory_entities if not item.get("resolved", True)),
+        "skipped_files": len(session.skipped_files),
         "diagnostics": dict(sorted(severities.items())),
     }
+    session.emit("complete", len(scan_files), len(scan_files), message="Scan complete")
     return data
 
 
@@ -2358,10 +2715,18 @@ def entity_label(entity: dict[str, Any]) -> str:
     return f"{name}{type_name}{confidence}{location}"
 
 
-def print_text_report(data: dict[str, Any]) -> None:
+def print_text_report(data: dict[str, Any], *, resolved_only: bool = False) -> None:
     print(f"Repository: {data['repository']['path']}")
     print(f"Schema: {data['schema_version']}  Scanner: {data['scanner']['version']} ({data['scanner']['mode']})")
     print(f"Packages: {data['package_count']}")
+    print(
+        f"Entities: {data['summary']['resolved_entities']} resolved, "
+        f"{data['summary']['unresolved_entities']} unresolved; skipped files: {data['summary']['skipped_files']}"
+    )
+    print(
+        f"Diagnostic policy: dependency_mode={data['configuration']['dependency_mode']}, "
+        f"suppressed={data['configuration']['suppressed_diagnostics']}"
+    )
     for report in data["packages"]:
         package = report["package"]
         print(f"\n{package['name']} ({package['path']})")
@@ -2370,6 +2735,8 @@ def print_text_report(data: dict[str, Any]) -> None:
             if report[key]:
                 print(f"  {key}:")
                 for item in report[key]:
+                    if resolved_only and not item.get("resolved", True):
+                        continue
                     print(f"    - {entity_label(item)}")
         if report["launch_files"]:
             print("  launch_files:")
@@ -2386,14 +2753,71 @@ def print_text_report(data: dict[str, Any]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Statically discover and diagnose a ROS 2 repository or workspace.")
-    parser.add_argument("repository", nargs="?", default=".", help="Repository or workspace path")
+    parser.add_argument("repository", nargs="?", default=".", help="Repository/workspace path or public HTTPS Git URL")
     parser.add_argument("--json", action="store_true", help="Emit the stable JSON schema instead of text")
     parser.add_argument("--output", "-o", help="Write output to a file")
+    parser.add_argument("--config", type=Path, help="JSON configuration file; local scans default to <repository>/.robot-doctor.json")
+    parser.add_argument("--suppress", action="append", default=[], metavar="CODE[,CODE]", help="Suppress diagnostic codes")
+    parser.add_argument("--severity", action="append", default=[], metavar="CODE=LEVEL", help="Override diagnostic severity")
+    parser.add_argument("--dependency-mode", choices=("off", "direct", "all"), help="Dependency diagnostic sensitivity")
+    parser.add_argument("--max-file-size-mb", type=float, help="Maximum source-file size in MiB")
+    parser.add_argument("--max-total-size-mb", type=float, help="Maximum total source text read in MiB")
+    parser.add_argument("--max-files", type=int, help="Maximum number of scan-candidate files to select and read")
+    parser.add_argument("--max-repository-entries", type=int, help="Maximum files and directories to enumerate")
+    parser.add_argument("--max-checkout-size-mb", type=float, help="Maximum HTTPS Git checkout size in MiB")
+    parser.add_argument("--progress", action="store_true", help="Report progress to stderr")
+    parser.add_argument("--resolved-only", action="store_true", help="Hide unresolved entities in text output")
     args = parser.parse_args()
-    root = Path(args.repository)
-    if not root.exists() or not root.is_dir():
-        parser.error(f"repository path is not a directory: {root}")
-    data = scan_repository(root)
+    suppressions = {code.strip() for value in args.suppress for code in value.split(",") if code.strip()}
+    severity_overrides = {}
+    for value in args.severity:
+        if "=" not in value:
+            parser.error(f"severity override must be CODE=LEVEL: {value}")
+        code, severity = value.split("=", 1)
+        severity_overrides[code.strip()] = severity.strip()
+    if args.max_file_size_mb is not None and args.max_file_size_mb <= 0:
+        parser.error("--max-file-size-mb must be positive")
+    if args.max_total_size_mb is not None and args.max_total_size_mb <= 0:
+        parser.error("--max-total-size-mb must be positive")
+    if args.max_files is not None and args.max_files <= 0:
+        parser.error("--max-files must be positive")
+    if args.max_repository_entries is not None and args.max_repository_entries <= 0:
+        parser.error("--max-repository-entries must be positive")
+    if args.max_checkout_size_mb is not None and args.max_checkout_size_mb <= 0:
+        parser.error("--max-checkout-size-mb must be positive")
+
+    def progress(event: dict[str, Any]) -> None:
+        if args.progress:
+            total = event["total"] or 1
+            print(f"[{event['stage']}] {event['current']}/{total} {event.get('path') or ''} {event.get('message') or ''}".rstrip(), file=sys.stderr)
+
+    from .intake import IntakeError, materialize_repository
+
+    try:
+        with materialize_repository(
+            args.repository,
+            max_checkout_bytes=int(args.max_checkout_size_mb * 1024 * 1024) if args.max_checkout_size_mb is not None else None,
+        ) as repository_input:
+            selected_config = load_scan_config_for_input(
+                args.config,
+                repository_input.path,
+                repository_input.source_type,
+            ).with_overrides(
+                max_file_size_bytes=int(args.max_file_size_mb * 1024 * 1024) if args.max_file_size_mb is not None else None,
+                max_total_size_bytes=int(args.max_total_size_mb * 1024 * 1024) if args.max_total_size_mb is not None else None,
+                max_files=args.max_files,
+                max_repository_entries=args.max_repository_entries,
+                dependency_mode=args.dependency_mode,
+                suppress_diagnostics=suppressions,
+                severity_overrides=severity_overrides,
+            )
+            data = scan_repository(repository_input.path, config=selected_config, progress=progress)
+            data["repository"].update(source=repository_input.source, source_type=repository_input.source_type)
+    except (ConfigError, IntakeError) as exc:
+        parser.error(str(exc))
+    except ScanCancelled:
+        print("Scan cancelled.", file=sys.stderr)
+        return 130
     if args.json:
         output = json.dumps(data, indent=2, sort_keys=True)
     else:
@@ -2403,7 +2827,7 @@ def main() -> int:
         original = sys.stdout
         sys.stdout = buffer
         try:
-            print_text_report(data)
+            print_text_report(data, resolved_only=args.resolved_only)
         finally:
             sys.stdout = original
         output = buffer.getvalue().rstrip()

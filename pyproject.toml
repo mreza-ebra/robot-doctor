@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "robot-doctor-static"
-version = "0.4.0"
+version = "0.5.0"
 description = "Evidence-backed static inventory and diagnostics for ROS 2 repositories"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -21,6 +21,7 @@ test = ["jsonschema>=4.21"]
 [project.scripts]
 robot-doctor-scan = "robot_doctor.scanner:main"
 robot-doctor-overview = "robot_doctor.overviews:main"
+robot-doctor-web = "robot_doctor.web:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

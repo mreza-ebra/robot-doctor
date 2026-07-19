@@ -1,6 +1,8 @@
 Repository: /Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4
-Schema: 1.1.0  Scanner: 0.4.0 (static)
+Schema: 1.2.0  Scanner: 0.5.0 (static)
 Packages: 4
+Entities: 38 resolved, 1 unresolved; skipped files: 0
+Diagnostic policy: dependency_mode=direct, suppressed=0
 
 turtlebot4_description (turtlebot4_description)
   build_type: ament_cmake
@@ -50,17 +52,17 @@ turtlebot4_node (turtlebot4_node)
     - dock_status [irobot_create_msgs/msg/DockStatus] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:138)
     - wheel_status [irobot_create_msgs/msg/WheelStatus] confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:143)
   service_clients:
-    - e_stop [EStop] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:164)
-    - robot_power [Power] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:165)
-    - start_motor [EmptySrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:166)
-    - stop_motor [EmptySrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:169)
-    - oakd/start_camera [TriggerSrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:172)
-    - oakd/stop_camera [TriggerSrv] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:175)
+    - e_stop [irobot_create_msgs/srv/EStop] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:164)
+    - robot_power [irobot_create_msgs/srv/RobotPower] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:165)
+    - start_motor [std_srvs/srv/Empty] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:166)
+    - stop_motor [std_srvs/srv/Empty] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:169)
+    - oakd/start_camera [std_srvs/srv/Trigger] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:172)
+    - oakd/stop_camera [std_srvs/srv/Trigger] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:175)
   action_clients:
-    - dock [Dock] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:158)
-    - undock [Undock] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:159)
-    - wall_follow [WallFollow] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:160)
-    - led_animation [LedAnimation] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:161)
+    - dock [irobot_create_msgs/action/Dock] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:158)
+    - undock [irobot_create_msgs/action/Undock] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:159)
+    - wall_follow [irobot_create_msgs/action/WallFollow] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:160)
+    - led_animation [irobot_create_msgs/action/LedAnimation] confidence=0.94 (turtlebot4_node/src/turtlebot4.cpp:161)
   declared_parameters:
     - model confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:60)
     - wifi.interface confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:73)
@@ -69,10 +71,10 @@ turtlebot4_node (turtlebot4_node)
     - menu.entries confidence=1.00 (turtlebot4_node/src/turtlebot4.cpp:125)
 
 Diagnostics:
-  - WARNING RD101: turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. (confidence=0.78)
-  - WARNING RD101: turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. (confidence=0.78)
-  - WARNING RD101: turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. (confidence=0.78)
-  - WARNING RD101: turtlebot4_navigation references 'rclpy' but package.xml does not declare it. (confidence=0.78)
+  - INFO RD101: turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+  - INFO RD101: turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+  - INFO RD101: turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+  - INFO RD101: turtlebot4_navigation references 'rclpy' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
   - INFO RD202: Topic 'battery_state' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
   - INFO RD202: Topic 'dock_status' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
   - INFO RD202: Topic 'function_calls' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)

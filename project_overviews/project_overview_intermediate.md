@@ -294,12 +294,12 @@ _None detected._
 
 | Package | Service | Type | Location | Certainty |
 | --- | --- | --- | --- | --- |
-| turtlebot4_node | e_stop | EStop | turtlebot4_node/src/turtlebot4.cpp:164 | detected 94% |
-| turtlebot4_node | robot_power | Power | turtlebot4_node/src/turtlebot4.cpp:165 | detected 94% |
-| turtlebot4_node | start_motor | EmptySrv | turtlebot4_node/src/turtlebot4.cpp:166 | detected 94% |
-| turtlebot4_node | stop_motor | EmptySrv | turtlebot4_node/src/turtlebot4.cpp:169 | detected 94% |
-| turtlebot4_node | oakd/start_camera | TriggerSrv | turtlebot4_node/src/turtlebot4.cpp:172 | detected 94% |
-| turtlebot4_node | oakd/stop_camera | TriggerSrv | turtlebot4_node/src/turtlebot4.cpp:175 | detected 94% |
+| turtlebot4_node | e_stop | irobot_create_msgs/srv/EStop | turtlebot4_node/src/turtlebot4.cpp:164 | detected 94% |
+| turtlebot4_node | robot_power | irobot_create_msgs/srv/RobotPower | turtlebot4_node/src/turtlebot4.cpp:165 | detected 94% |
+| turtlebot4_node | start_motor | std_srvs/srv/Empty | turtlebot4_node/src/turtlebot4.cpp:166 | detected 94% |
+| turtlebot4_node | stop_motor | std_srvs/srv/Empty | turtlebot4_node/src/turtlebot4.cpp:169 | detected 94% |
+| turtlebot4_node | oakd/start_camera | std_srvs/srv/Trigger | turtlebot4_node/src/turtlebot4.cpp:172 | detected 94% |
+| turtlebot4_node | oakd/stop_camera | std_srvs/srv/Trigger | turtlebot4_node/src/turtlebot4.cpp:175 | detected 94% |
 
 ### Action Servers
 
@@ -311,30 +311,30 @@ _None detected._
 | --- | --- | --- | --- | --- |
 | turtlebot4_navigation | undock | irobot_create_msgs/action/Undock | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:68 | detected 100% |
 | turtlebot4_navigation | dock | irobot_create_msgs/action/Dock | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:69 | detected 100% |
-| turtlebot4_node | dock | Dock | turtlebot4_node/src/turtlebot4.cpp:158 | detected 94% |
-| turtlebot4_node | undock | Undock | turtlebot4_node/src/turtlebot4.cpp:159 | detected 94% |
-| turtlebot4_node | wall_follow | WallFollow | turtlebot4_node/src/turtlebot4.cpp:160 | detected 94% |
-| turtlebot4_node | led_animation | LedAnimation | turtlebot4_node/src/turtlebot4.cpp:161 | detected 94% |
+| turtlebot4_node | dock | irobot_create_msgs/action/Dock | turtlebot4_node/src/turtlebot4.cpp:158 | detected 94% |
+| turtlebot4_node | undock | irobot_create_msgs/action/Undock | turtlebot4_node/src/turtlebot4.cpp:159 | detected 94% |
+| turtlebot4_node | wall_follow | irobot_create_msgs/action/WallFollow | turtlebot4_node/src/turtlebot4.cpp:160 | detected 94% |
+| turtlebot4_node | led_animation | irobot_create_msgs/action/LedAnimation | turtlebot4_node/src/turtlebot4.cpp:161 | detected 94% |
 
 ### Resolved Service Graph
 
 | Service | Types | Servers | Clients | Certainty |
 | --- | --- | --- | --- | --- |
-| e_stop | EStop |  | turtlebot4_node | detected 94% |
-| oakd/start_camera | TriggerSrv |  | turtlebot4_node | detected 94% |
-| oakd/stop_camera | TriggerSrv |  | turtlebot4_node | detected 94% |
-| robot_power | Power |  | turtlebot4_node | detected 94% |
-| start_motor | EmptySrv |  | turtlebot4_node | detected 94% |
-| stop_motor | EmptySrv |  | turtlebot4_node | detected 94% |
+| e_stop | irobot_create_msgs/srv/EStop |  | turtlebot4_node | detected 94% |
+| oakd/start_camera | std_srvs/srv/Trigger |  | turtlebot4_node | detected 94% |
+| oakd/stop_camera | std_srvs/srv/Trigger |  | turtlebot4_node | detected 94% |
+| robot_power | irobot_create_msgs/srv/RobotPower |  | turtlebot4_node | detected 94% |
+| start_motor | std_srvs/srv/Empty |  | turtlebot4_node | detected 94% |
+| stop_motor | std_srvs/srv/Empty |  | turtlebot4_node | detected 94% |
 
 ### Resolved Action Graph
 
 | Action | Types | Servers | Clients | Certainty |
 | --- | --- | --- | --- | --- |
-| dock | Dock, irobot_create_msgs/action/Dock |  | source:turtlebot4_navigation:unresolved:turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py, turtlebot4_node | detected 94% |
-| led_animation | LedAnimation |  | turtlebot4_node | detected 94% |
-| undock | Undock, irobot_create_msgs/action/Undock |  | source:turtlebot4_navigation:unresolved:turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py, turtlebot4_node | detected 94% |
-| wall_follow | WallFollow |  | turtlebot4_node | detected 94% |
+| dock | irobot_create_msgs/action/Dock |  | source:turtlebot4_navigation:unresolved:turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py, turtlebot4_node | detected 94% |
+| led_animation | irobot_create_msgs/action/LedAnimation |  | turtlebot4_node | detected 94% |
+| undock | irobot_create_msgs/action/Undock |  | source:turtlebot4_navigation:unresolved:turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py, turtlebot4_node | detected 94% |
+| wall_follow | irobot_create_msgs/action/WallFollow |  | turtlebot4_node | detected 94% |
 
 ## Robot Structure And TF
 
@@ -391,8 +391,8 @@ flowchart TD
 | Package | Command interface | Type | Role | Location | Certainty |
 | --- | --- | --- | --- | --- | --- |
 | turtlebot4_node | hmi/led/_motors | std_msgs/msg/Int32 | command or actuation interface | turtlebot4_node/src/leds.cpp:48 | inferred 75% |
-| turtlebot4_node | start_motor | EmptySrv | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:166 | inferred 75% |
-| turtlebot4_node | stop_motor | EmptySrv | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:169 | inferred 75% |
+| turtlebot4_node | start_motor | std_srvs/srv/Empty | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:166 | inferred 75% |
+| turtlebot4_node | stop_motor | std_srvs/srv/Empty | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:169 | inferred 75% |
 
 ## Custom Interfaces
 
@@ -418,10 +418,10 @@ flowchart TD
 
 | Severity | Code | Finding | Meaning | Certainty | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'rclpy' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'rclpy' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
 | info | RD202 | Orphan topic endpoint | Topic 'battery_state' has no statically detected publisher. Runtime or external nodes may provide it. | diagnostic 62% | turtlebot4_node/src/turtlebot4.cpp:133 (cpp_call_parser) |
 | info | RD202 | Orphan topic endpoint | Topic 'dock_status' has no statically detected publisher. Runtime or external nodes may provide it. | diagnostic 62% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:58 (python_ast) |
 | info | RD202 | Orphan topic endpoint | Topic 'function_calls' has no statically detected subscriber. Runtime or external nodes may provide it. | diagnostic 62% | turtlebot4_node/src/turtlebot4.cpp:153 (cpp_call_parser) |

@@ -1,0 +1,12 @@
+{
+  "max_file_size_bytes": 5242880,
+  "max_total_size_bytes": 268435456,
+  "max_files": 100000,
+  "max_repository_entries": 250000,
+  "dependency_mode": "direct",
+  "suppress_diagnostics": [],
+  "severity_overrides": {},
+  "ignore_dependencies": [],
+  "ignore_dependency_pairs": [],
+  "minimum_diagnostic_confidence": 0.0
+}

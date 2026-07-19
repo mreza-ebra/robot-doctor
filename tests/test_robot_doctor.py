@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from importlib import resources
 from pathlib import Path
+from unittest import mock
 
 WORKSPACE = Path(__file__).parents[1]
 SOURCE_ROOT = WORKSPACE / "src"
@@ -14,6 +15,7 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from robot_doctor import overviews as generate_project_overviews
 from robot_doctor import scanner as ros_repo_discover
+from robot_doctor.config import ScanConfig
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -52,6 +54,10 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertIn("keyword_status", {item["name"] for item in data["architecture"]["topics"]})
 
     def test_cpp_parser_finds_standard_entities_and_urdf(self):
+        self.assertEqual(
+            ros_repo_discover.resolve_cpp_type("rclcpp::TypeAdapter<std::string, std_msgs::msg::String>", {}),
+            "std_msgs/msg/String",
+        )
         data = ros_repo_discover.scan_repository(FIXTURES / "cpp_robot")
         report = data["packages"][0]
 
@@ -113,6 +119,102 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertEqual(data["package_count"], 1)
         self.assertEqual(data["packages"][0]["package"]["name"], "real_pkg")
 
+    def test_unreadable_and_oversized_files_are_skipped_safely(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "probe"
+            self.write_minimal_package(package, "probe")
+            source = package / "src" / "large.cpp"
+            source.parent.mkdir()
+            source.write_text("x" * 2_000, encoding="utf-8")
+            data = ros_repo_discover.scan_repository(root, config=ScanConfig(max_file_size_bytes=1_000))
+            total_limited = ros_repo_discover.scan_repository(
+                root,
+                config=ScanConfig(max_file_size_bytes=10_000, max_total_size_bytes=1_000),
+            )
+
+        self.assertIn("RD005", {item["code"] for item in data["diagnostics"]})
+        self.assertEqual(data["summary"]["skipped_files"], 1)
+        self.assertIn("RD009", {item["code"] for item in total_limited["diagnostics"]})
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "unreadable"
+            self.write_minimal_package(package, "unreadable")
+            original_read_text = Path.read_text
+
+            def guarded_read_text(path: Path, *args, **kwargs):
+                if path.name == "package.xml":
+                    raise PermissionError("fixture permission denied")
+                return original_read_text(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "read_text", new=guarded_read_text):
+                data = ros_repo_discover.scan_repository(root)
+
+        self.assertEqual(data["package_count"], 0)
+        self.assertIn("RD004", {item["code"] for item in data["diagnostics"]})
+
+    def test_repository_enumeration_and_candidate_limits_are_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(8):
+                package = root / f"package_{index}"
+                self.write_minimal_package(package, f"package_{index}")
+            file_limited = ros_repo_discover.scan_repository(
+                root,
+                config=ScanConfig(max_files=2, max_repository_entries=100),
+            )
+            entry_limited = ros_repo_discover.scan_repository(
+                root,
+                config=ScanConfig(max_files=100, max_repository_entries=3),
+            )
+
+        self.assertLessEqual(file_limited["package_count"], 2)
+        self.assertIn("RD007", {item["code"] for item in file_limited["diagnostics"]})
+        self.assertIn("RD010", {item["code"] for item in entry_limited["diagnostics"]})
+        self.assertEqual(entry_limited["configuration"]["max_repository_entries"], 3)
+
+    def test_remote_input_does_not_auto_load_repository_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".robot-doctor.json").write_text(
+                '{"max_files": 999999, "suppress_diagnostics": ["RD001"]}',
+                encoding="utf-8",
+            )
+            local_config = ros_repo_discover.load_scan_config_for_input(None, root, "local")
+            remote_config = ros_repo_discover.load_scan_config_for_input(None, root, "git")
+            explicit_remote_config = ros_repo_discover.load_scan_config_for_input(root / ".robot-doctor.json", root, "git")
+
+        self.assertEqual(local_config.max_files, 999999)
+        self.assertEqual(remote_config, ScanConfig())
+        self.assertEqual(explicit_remote_config.max_files, 999999)
+
+    def test_progress_cancellation_and_diagnostic_policy(self):
+        events = []
+        data = ros_repo_discover.scan_repository(FIXTURES / "python_robot", progress=events.append)
+        self.assertEqual(events[-1]["stage"], "complete")
+        self.assertEqual(events[-1]["current"], events[-1]["total"])
+        self.assertGreater(data["summary"]["resolved_entities"], 0)
+
+        checks = iter((False, False, True))
+        with self.assertRaises(ros_repo_discover.ScanCancelled):
+            ros_repo_discover.scan_repository(FIXTURES, cancel_check=lambda: next(checks, True))
+
+        configured = ros_repo_discover.scan_repository(
+            FIXTURES,
+            config=ScanConfig(suppress_diagnostics=frozenset({"RD201"}), severity_overrides={"RD206": "info"}),
+        )
+        self.assertNotIn("RD201", {item["code"] for item in configured["diagnostics"]})
+        self.assertTrue(all(item["severity"] == "info" for item in configured["diagnostics"] if item["code"] == "RD206"))
+        self.assertGreater(configured["configuration"]["suppressed_diagnostics"], 0)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".robot-doctor.json").write_text('{"suppress_diagnostics": ["RD001"]}', encoding="utf-8")
+            configured = ros_repo_discover.scan_repository(root)
+        self.assertNotIn("RD001", {item["code"] for item in configured["diagnostics"]})
+        self.assertEqual(configured["configuration"]["suppressed_diagnostics"], 1)
+
     def test_diagnostics_detect_type_qos_dependency_and_launch_failures(self):
         combined = ros_repo_discover.scan_repository(FIXTURES)
         combined_codes = {item["code"] for item in combined["diagnostics"]}
@@ -140,6 +242,7 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertIn("RD101", codes)
         self.assertIn("RD301", codes)
         self.assertIn("RD302", codes)
+        self.assertTrue(all(item["severity"] == "info" for item in data["diagnostics"] if item["code"] == "RD101"))
 
     def test_every_inventory_entity_has_evidence_and_confidence(self):
         data = ros_repo_discover.scan_repository(FIXTURES)
@@ -218,6 +321,7 @@ class RobotDoctorScannerTests(unittest.TestCase):
         definitions = schema["$defs"]
 
         self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(schema["properties"]["configuration"]["$ref"], "#/$defs/configuration")
         self.assertEqual(definitions["packageReport"]["properties"]["publishers"]["items"]["$ref"], "#/$defs/finding")
         self.assertEqual(definitions["launchGraph"]["properties"]["files"]["items"]["$ref"], "#/$defs/launchFile")
         self.assertEqual(definitions["launchFile"]["properties"]["actions"]["items"]["$ref"], "#/$defs/launchAction")
@@ -232,8 +336,11 @@ class RobotDoctorScannerTests(unittest.TestCase):
     def test_packaged_schema_matches_root_contract(self):
         root_schema = (WORKSPACE / "schemas" / "robot_doctor_scan.schema.json").read_text(encoding="utf-8")
         packaged_schema = resources.files("robot_doctor").joinpath("schemas/robot_doctor_scan.schema.json").read_text(encoding="utf-8")
+        root_config_schema = (WORKSPACE / "schemas" / "robot_doctor_config.schema.json").read_text(encoding="utf-8")
+        packaged_config_schema = resources.files("robot_doctor").joinpath("schemas/robot_doctor_config.schema.json").read_text(encoding="utf-8")
 
         self.assertEqual(json.loads(packaged_schema), json.loads(root_schema))
+        self.assertEqual(json.loads(packaged_config_schema), json.loads(root_config_schema))
 
     def test_scan_matches_json_schema_when_validator_is_installed(self):
         try:
@@ -241,8 +348,11 @@ class RobotDoctorScannerTests(unittest.TestCase):
         except ImportError:
             self.skipTest("install the test extra for formal JSON Schema validation")
         schema = json.loads((WORKSPACE / "schemas" / "robot_doctor_scan.schema.json").read_text(encoding="utf-8"))
+        config_schema = json.loads((WORKSPACE / "schemas" / "robot_doctor_config.schema.json").read_text(encoding="utf-8"))
         jsonschema.Draft202012Validator.check_schema(schema)
+        jsonschema.Draft202012Validator.check_schema(config_schema)
         jsonschema.Draft202012Validator(schema).validate(ros_repo_discover.scan_repository(FIXTURES))
+        jsonschema.Draft202012Validator(config_schema).validate(json.loads((WORKSPACE / ".robot-doctor.example.json").read_text(encoding="utf-8")))
 
     @staticmethod
     def write_minimal_package(path: Path, name: str) -> None:

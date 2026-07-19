@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "benchmarks": [
+    {
+      "name": "python_fixture",
+      "path": "tests/fixtures/python_robot",
+      "required": true,
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "entities": {
+        "executables": [
+          {"package": "probe_py", "name": "probe_node"},
+          {"package": "probe_py", "name": "keyword_node"},
+          {"package": "probe_py", "name": "cfg_probe"}
+        ],
+        "node_names": [
+          {"package": "probe_py", "name": "probe_node"},
+          {"package": "probe_py", "name": "managed_probe"},
+          {"package": "probe_py", "name": "keyword_node"}
+        ],
+        "publishers": [
+          {"package": "probe_py", "name": "status", "type": "std_msgs/msg/String"},
+          {"package": "probe_py", "name": "keyword_status", "type": "std_msgs/msg/String"}
+        ],
+        "subscriptions": [
+          {"package": "probe_py", "name": "status", "type": "std_msgs/msg/String"},
+          {"package": "probe_py", "name": "keyword_command", "type": "std_msgs/msg/String"},
+          {"package": "probe_py", "name": "keyword_status", "type": "sensor_msgs/msg/Imu"}
+        ],
+        "service_servers": [
+          {"package": "probe_py", "name": "reset", "type": "std_srvs/srv/Trigger"},
+          {"package": "probe_py", "name": "keyword_reset", "type": "std_srvs/srv/Trigger"},
+          {"package": "probe_py", "name": "shared_service", "type": "std_srvs/srv/Trigger"}
+        ],
+        "service_clients": [
+          {"package": "probe_py", "name": "remote_reset", "type": "std_srvs/srv/Trigger"},
+          {"package": "probe_py", "name": "keyword_remote_reset", "type": "std_srvs/srv/Trigger"},
+          {"package": "probe_py", "name": "shared_service", "type": "std_srvs/srv/Empty"}
+        ],
+        "action_servers": [
+          {"package": "probe_py", "name": "compute", "type": "example_interfaces/action/Fibonacci"},
+          {"package": "probe_py", "name": "keyword_compute", "type": "example_interfaces/action/Fibonacci"},
+          {"package": "probe_py", "name": "shared_action", "type": "example_interfaces/action/Fibonacci"}
+        ],
+        "action_clients": [
+          {"package": "probe_py", "name": "keyword_remote_compute", "type": "example_interfaces/action/Fibonacci"},
+          {"package": "probe_py", "name": "shared_action", "type": "control_msgs/action/FollowJointTrajectory"}
+        ],
+        "declared_parameters": [
+          {"package": "probe_py", "name": "rate"},
+          {"package": "probe_py", "name": "keyword_rate"}
+        ]
+      }
+    },
+    {
+      "name": "cpp_fixture",
+      "path": "tests/fixtures/cpp_robot",
+      "required": true,
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "entities": {
+        "executables": [{"package": "probe_cpp", "name": "probe_cpp_node"}],
+        "node_names": [{"package": "probe_cpp", "name": "probe_cpp_node"}],
+        "publishers": [
+          {"package": "probe_cpp", "name": "status", "type": "sensor_msgs/msg/Imu"},
+          {"package": "probe_cpp", "name": "wrapped_status", "type": "sensor_msgs/msg/Imu"}
+        ],
+        "subscriptions": [{"package": "probe_cpp", "name": "imu", "type": "sensor_msgs/msg/Imu"}],
+        "service_servers": [{"package": "probe_cpp", "name": "calibrate", "type": "std_srvs/srv/Trigger"}],
+        "service_clients": [
+          {"package": "probe_cpp", "name": "remote_calibrate", "type": "std_srvs/srv/Trigger"},
+          {"package": "probe_cpp", "name": "wrapped_reset", "type": "std_srvs/srv/Trigger"}
+        ],
+        "action_servers": [{"package": "probe_cpp", "name": "sequence", "type": "example_interfaces/action/Fibonacci"}],
+        "action_clients": [{"package": "probe_cpp", "name": "wrapped_sequence", "type": "example_interfaces/action/Fibonacci"}],
+        "declared_parameters": [{"package": "probe_cpp", "name": "gain"}]
+      }
+    },
+    {
+      "name": "turtlebot4",
+      "path": "turtlebot4",
+      "required": false,
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "entities": {
+        "executables": [{"package": "turtlebot4_node", "name": "turtlebot4_node"}],
+        "node_names": [{"package": "turtlebot4_node", "name": "turtlebot4_node"}],
+        "publishers": [
+          {"package": "turtlebot4_node", "name": "hmi/display", "type": "turtlebot4_msgs/msg/UserDisplay"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_power", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_motors", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_comms", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_wifi", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_battery", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_user1", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "hmi/led/_user2", "type": "std_msgs/msg/Int32"},
+          {"package": "turtlebot4_node", "name": "ip", "type": "std_msgs/msg/String"},
+          {"package": "turtlebot4_node", "name": "function_calls", "type": "std_msgs/msg/String"}
+        ],
+        "subscriptions": [
+          {"package": "turtlebot4_navigation", "name": "dock_status", "type": "irobot_create_msgs/msg/DockStatus"},
+          {"package": "turtlebot4_navigation", "name": "initialpose", "type": "geometry_msgs/msg/PoseWithCovarianceStamped"},
+          {"package": "turtlebot4_node", "name": "interface_buttons", "type": "irobot_create_msgs/msg/InterfaceButtons"},
+          {"package": "turtlebot4_node", "name": "joy", "type": "sensor_msgs/msg/Joy"},
+          {"package": "turtlebot4_node", "name": "hmi/buttons", "type": "turtlebot4_msgs/msg/UserButton"},
+          {"package": "turtlebot4_node", "name": "hmi/display/message", "type": "std_msgs/msg/String"},
+          {"package": "turtlebot4_node", "name": "hmi/led", "type": "turtlebot4_msgs/msg/UserLed"},
+          {"package": "turtlebot4_node", "name": "battery_state", "type": "sensor_msgs/msg/BatteryState"},
+          {"package": "turtlebot4_node", "name": "dock_status", "type": "irobot_create_msgs/msg/DockStatus"},
+          {"package": "turtlebot4_node", "name": "wheel_status", "type": "irobot_create_msgs/msg/WheelStatus"}
+        ],
+        "service_servers": [],
+        "service_clients": [
+          {"package": "turtlebot4_node", "name": "e_stop", "type": "irobot_create_msgs/srv/EStop"},
+          {"package": "turtlebot4_node", "name": "robot_power", "type": "irobot_create_msgs/srv/RobotPower"},
+          {"package": "turtlebot4_node", "name": "start_motor", "type": "std_srvs/srv/Empty"},
+          {"package": "turtlebot4_node", "name": "stop_motor", "type": "std_srvs/srv/Empty"},
+          {"package": "turtlebot4_node", "name": "oakd/start_camera", "type": "std_srvs/srv/Trigger"},
+          {"package": "turtlebot4_node", "name": "oakd/stop_camera", "type": "std_srvs/srv/Trigger"}
+        ],
+        "action_servers": [],
+        "action_clients": [
+          {"package": "turtlebot4_navigation", "name": "undock", "type": "irobot_create_msgs/action/Undock"},
+          {"package": "turtlebot4_navigation", "name": "dock", "type": "irobot_create_msgs/action/Dock"},
+          {"package": "turtlebot4_node", "name": "dock", "type": "irobot_create_msgs/action/Dock"},
+          {"package": "turtlebot4_node", "name": "undock", "type": "irobot_create_msgs/action/Undock"},
+          {"package": "turtlebot4_node", "name": "wall_follow", "type": "irobot_create_msgs/action/WallFollow"},
+          {"package": "turtlebot4_node", "name": "led_animation", "type": "irobot_create_msgs/action/LedAnimation"}
+        ],
+        "declared_parameters": [
+          {"package": "turtlebot4_node", "name": "model"},
+          {"package": "turtlebot4_node", "name": "wifi.interface"},
+          {"package": "turtlebot4_node", "name": "power_saver"},
+          {"package": "turtlebot4_node", "name": "menu.entries"}
+        ]
+      }
+    }
+  ]
+}

@@ -103,7 +103,7 @@ def entity_rows(data: dict[str, Any], key: str, include_qos: bool = False) -> li
 
 def tree_text(root: Path, max_entries: int = 100) -> str:
     paths = []
-    for file in ros_repo_discover.iter_repository_files(root):
+    for file in ros_repo_discover.iter_repository_files(root, max_entries=max_entries * 10):
         relative = file.relative_to(root)
         if len(relative.parts) <= 4:
             paths.append(relative.as_posix())

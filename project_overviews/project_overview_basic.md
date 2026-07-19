@@ -14,11 +14,13 @@ Static analysis detected 4 package(s), 4 launch file(s), 3 node declaration(s), 
 | Topics | 19 |
 | Services | 6 |
 | Actions | 6 |
+| Resolved Entities | 38 |
+| Unresolved Entities | 1 |
+| Skipped Files | 0 |
 
 | Diagnostic severity | Count |
 | --- | --- |
-| info | 29 |
-| warning | 4 |
+| info | 33 |
 
 ## Package Map
 
@@ -88,8 +90,8 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 | Package | Interface | Type | Role | Location | Certainty |
 | --- | --- | --- | --- | --- | --- |
 | turtlebot4_node | hmi/led/_motors | std_msgs/msg/Int32 | command or actuation interface | turtlebot4_node/src/leds.cpp:48 | inferred 75% |
-| turtlebot4_node | start_motor | EmptySrv | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:166 | inferred 75% |
-| turtlebot4_node | stop_motor | EmptySrv | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:169 | inferred 75% |
+| turtlebot4_node | start_motor | std_srvs/srv/Empty | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:166 | inferred 75% |
+| turtlebot4_node | stop_motor | std_srvs/srv/Empty | command or actuation interface | turtlebot4_node/src/turtlebot4.cpp:169 | inferred 75% |
 
 ## Where To Make Changes
 
@@ -107,10 +109,10 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 | Severity | Code | Finding | Meaning | Certainty | Evidence |
 | --- | --- | --- | --- | --- | --- |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
-| warning | RD101 | Likely missing package dependency | turtlebot4_navigation references 'rclpy' but package.xml does not declare it. | diagnostic 78% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
+| info | RD101 | Possible undeclared dependency | turtlebot4_navigation references 'rclpy' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. | diagnostic 58% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:1 (python_import) |
 | info | RD202 | Orphan topic endpoint | Topic 'battery_state' has no statically detected publisher. Runtime or external nodes may provide it. | diagnostic 62% | turtlebot4_node/src/turtlebot4.cpp:133 (cpp_call_parser) |
 | info | RD202 | Orphan topic endpoint | Topic 'dock_status' has no statically detected publisher. Runtime or external nodes may provide it. | diagnostic 62% | turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py:58 (python_ast) |
 | info | RD202 | Orphan topic endpoint | Topic 'function_calls' has no statically detected subscriber. Runtime or external nodes may provide it. | diagnostic 62% | turtlebot4_node/src/turtlebot4.cpp:153 (cpp_call_parser) |
