@@ -1,5 +1,7 @@
 include LICENSE
 include README.md
+include CHANGELOG.md
+include SECURITY.md
 include .robot-doctor.example.json
 recursive-include docs *.md
 recursive-include schemas *.json

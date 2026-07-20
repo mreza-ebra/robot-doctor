@@ -177,7 +177,7 @@ def home_page(csrf_token: str, error: str | None = None) -> str:
 <fieldset><legend>Repository</legend><label>Git URL<br><input type="url" name="git_url" placeholder="https://github.com/owner/repository.git"></label><p class="muted">or</p><label>Repository ZIP<br><input type="file" name="repository_zip" accept=".zip,application/zip"></label></fieldset>
 <fieldset><legend>Noise controls</legend><label>Dependency diagnostics <select name="dependency_mode"><option value="direct">Direct references (recommended)</option><option value="off">Off</option><option value="all">All inferred references</option></select></label><br><label>Suppress codes<br><input type="text" name="suppress_codes" placeholder="RD101,RD202"></label></fieldset>
 <button type="submit">Scan repository</button></form>
-<p class="muted">Runs locally on this computer. ZIP uploads are size-limited and safely extracted. Dynamic ROS runtime behavior still requires optional runtime verification.</p>""",
+<p class="muted">Runs locally on this computer. Results are temporary and disappear when this application closes. ZIP uploads are size-limited and safely extracted. Dynamic ROS runtime behavior still requires optional runtime verification.</p>""",
     )
 
 

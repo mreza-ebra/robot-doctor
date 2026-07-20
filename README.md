@@ -41,7 +41,7 @@ Start the local interface and press the scan button:
 robot-doctor-web
 ```
 
-The page accepts either a public `https://` Git repository URL or a ZIP upload. Scans run as background tasks with progress, cancellation, JSON download, and basic/intermediate/expert Markdown reports. The beta server refuses non-loopback hosts, validates Host and Origin headers, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service.
+The page accepts either a public `https://` Git repository URL or a ZIP upload. Scans run as background tasks with progress, cancellation, JSON download, and basic/intermediate/expert Markdown reports. The beta server refuses non-loopback hosts, validates Host and Origin headers, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
 
 The CLI also accepts Git directly:
 
@@ -104,7 +104,7 @@ Aggregate regressions are complemented by manually curated entity labels in `tes
 python3 tests/run_accuracy_benchmark.py --require-all --output accuracy.json
 ```
 
-The current labeled set covers 73 Python, C++, wrapper, and TurtleBot entities and requires 1.000 precision and recall. Interface keys retain the complete package/kind/type identity, so similarly named interfaces such as `std_msgs/msg/String` and `custom_msgs/msg/String` cannot collide. Ground-truth changes must be manually reviewed against source.
+The current set contains 121 manually reviewed labels across Python/C++ fixtures, TurtleBot 4, scoped MoveIt Servo and ros2_control production files, launch graph records, and diagnostic cases. It requires 1.000 precision and recall within each explicit scope. Interface keys retain complete package/kind/type identity, and pinned real-source labels fail on revision drift. Scope and provenance are documented in `tests/ground_truth/README.md`.
 
 Run the real-repository gate after placing the pinned checkouts at their manifest paths:
 
@@ -133,3 +133,5 @@ The current root license is proprietary and all rights are reserved. This conser
 ## Static-Analysis Limits
 
 Robot Doctor does not claim runtime certainty. Dynamic names, substitutions, external packages, plugin loading, runtime TF, and actual DDS QoS negotiation require a built or running system for confirmation. Type mismatches are errors only when endpoints are proven to share a node or launch deployment; otherwise they remain lower-confidence warnings. An optional live ROS graph comparison remains a later phase because it requires a sourced ROS installation and a running robot or simulation.
+
+Git URL intake currently rejects literal local/private addresses but does not pin resolved DNS addresses or independently validate every redirect destination. This is acceptable only inside the documented loopback beta boundary; complete `SECURITY.md` hosted-service controls before deployment beyond one trusted local user.

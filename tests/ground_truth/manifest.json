@@ -1,5 +1,5 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "benchmarks": [
     {
       "name": "python_fixture",
@@ -77,9 +77,64 @@
       }
     },
     {
+      "name": "launch_fixture",
+      "path": "tests/fixtures/launch_robot",
+      "required": true,
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "launch_graph": {
+        "launch_files": [
+          {"file": "launch_probe/launch/child.launch.xml", "format": "xml"},
+          {"file": "launch_probe/launch/main.launch.py", "format": "python"},
+          {"file": "launch_probe/launch/yaml_child.launch.yaml", "format": "yaml"}
+        ],
+        "launch_actions": [
+          {"file": "launch_probe/launch/child.launch.xml", "kind": "node", "package": "probe_cpp", "executable": "probe_cpp_node", "name": "cpp_probe", "namespace": "drivers"},
+          {"file": "launch_probe/launch/main.launch.py", "kind": "namespace", "value": "robot"},
+          {"file": "launch_probe/launch/main.launch.py", "kind": "node", "package": "probe_py", "executable": "probe_node", "name": "python_probe", "namespace": "sensors"},
+          {"file": "launch_probe/launch/main.launch.py", "kind": "container", "package": "rclcpp_components", "executable": "component_container", "name": "components", "namespace": "robot"},
+          {"file": "launch_probe/launch/main.launch.py", "kind": "composable_node", "package": "probe_cpp", "executable": "probe_cpp::Probe", "name": "cpp_component"},
+          {"file": "launch_probe/launch/yaml_child.launch.yaml", "kind": "node", "package": "probe_py", "executable": "probe_node", "name": "yaml_probe", "namespace": "sensors"},
+          {"file": "launch_probe/launch/yaml_child.launch.yaml", "kind": "composable_node", "package": "probe_cpp", "executable": "probe_cpp::Probe", "name": "yaml_component"}
+        ],
+        "launch_includes": [
+          {"file": "launch_probe/launch/child.launch.xml", "target": "yaml_child.launch.yaml", "resolved_path": "launch_probe/launch/yaml_child.launch.yaml", "exists": true},
+          {"file": "launch_probe/launch/main.launch.py", "target": "$(find-pkg-share launch_probe)/launch/child.launch.xml", "resolved_path": "launch_probe/launch/child.launch.xml", "exists": true}
+        ],
+        "launch_arguments": [
+          {"file": "launch_probe/launch/child.launch.xml", "name": "enabled", "default": "true"},
+          {"file": "launch_probe/launch/main.launch.py", "name": "enabled", "default": "true"},
+          {"file": "launch_probe/launch/yaml_child.launch.yaml", "name": "namespace", "default": "robot"}
+        ]
+      }
+    },
+    {
+      "name": "diagnostic_fixture",
+      "path": "tests/fixtures/python_robot",
+      "required": true,
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "diagnostic_codes": ["RD201", "RD202", "RD203", "RD204", "RD205", "RD206", "RD207"],
+      "diagnostics": [
+        {"code": "RD201", "topic": "keyword_status"},
+        {"code": "RD202", "topic": "keyword_command"},
+        {"code": "RD203", "topic": "status"},
+        {"code": "RD204", "interface": "shared_service"},
+        {"code": "RD205", "interface": "keyword_remote_reset"},
+        {"code": "RD205", "interface": "keyword_reset"},
+        {"code": "RD205", "interface": "remote_reset"},
+        {"code": "RD205", "interface": "reset"},
+        {"code": "RD206", "interface": "shared_action"},
+        {"code": "RD207", "interface": "compute"},
+        {"code": "RD207", "interface": "keyword_compute"},
+        {"code": "RD207", "interface": "keyword_remote_compute"}
+      ]
+    },
+    {
       "name": "turtlebot4",
       "path": "turtlebot4",
       "required": false,
+      "revision": "7fd29fb420e906f3aca4a904adb54b69b11c7c00",
       "minimum_precision": 1.0,
       "minimum_recall": 1.0,
       "entities": {
@@ -132,6 +187,69 @@
           {"package": "turtlebot4_node", "name": "wifi.interface"},
           {"package": "turtlebot4_node", "name": "power_saver"},
           {"package": "turtlebot4_node", "name": "menu.entries"}
+        ]
+      }
+    },
+    {
+      "name": "moveit2_servo_source",
+      "path": "real_repositories/moveit2",
+      "required": false,
+      "revision": "4d841063574c31a21f69ae12a39fddb77a7eb984",
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "scope": {
+        "packages": ["moveit_servo"],
+        "files": ["moveit_ros/moveit_servo/src/servo_node.cpp"]
+      },
+      "include_unresolved": true,
+      "compare_resolution": true,
+      "entities": {
+        "publishers": [
+          {"package": "moveit_servo", "name": "servo_params_.command_out_topic", "type": "trajectory_msgs/msg/JointTrajectory", "resolved": false},
+          {"package": "moveit_servo", "name": "servo_params_.command_out_topic", "type": "std_msgs/msg/Float64MultiArray", "resolved": false},
+          {"package": "moveit_servo", "name": "servo_params_.status_topic", "type": "moveit_msgs/msg/ServoStatus", "resolved": false}
+        ],
+        "subscriptions": [
+          {"package": "moveit_servo", "name": "servo_params_.joint_command_in_topic", "type": "control_msgs/msg/JointJog", "resolved": false},
+          {"package": "moveit_servo", "name": "servo_params_.cartesian_command_in_topic", "type": "geometry_msgs/msg/TwistStamped", "resolved": false},
+          {"package": "moveit_servo", "name": "servo_params_.pose_command_in_topic", "type": "geometry_msgs/msg/PoseStamped", "resolved": false}
+        ],
+        "service_servers": [
+          {"package": "moveit_servo", "name": "~/switch_command_type", "type": "moveit_msgs/srv/ServoCommandType", "resolved": true},
+          {"package": "moveit_servo", "name": "~/pause_servo", "type": "std_srvs/srv/SetBool", "resolved": true}
+        ]
+      }
+    },
+    {
+      "name": "ros2_control_manager_source",
+      "path": "real_repositories/ros2_control",
+      "required": false,
+      "revision": "2db79031a5464b0a3737d2c4de7f68c64ee93ef4",
+      "minimum_precision": 1.0,
+      "minimum_recall": 1.0,
+      "scope": {
+        "packages": ["controller_manager"],
+        "files": ["controller_manager/src/controller_manager.cpp"]
+      },
+      "entities": {
+        "publishers": [
+          {"package": "controller_manager", "name": "~/activity", "type": "controller_manager_msgs/msg/ControllerManagerActivity"}
+        ],
+        "subscriptions": [
+          {"package": "controller_manager", "name": "robot_description", "type": "std_msgs/msg/String"}
+        ],
+        "service_servers": [
+          {"package": "controller_manager", "name": "~/list_controllers", "type": "controller_manager_msgs/srv/ListControllers"},
+          {"package": "controller_manager", "name": "~/list_controller_types", "type": "controller_manager_msgs/srv/ListControllerTypes"},
+          {"package": "controller_manager", "name": "~/load_controller", "type": "controller_manager_msgs/srv/LoadController"},
+          {"package": "controller_manager", "name": "~/configure_controller", "type": "controller_manager_msgs/srv/ConfigureController"},
+          {"package": "controller_manager", "name": "~/reload_controller_libraries", "type": "controller_manager_msgs/srv/ReloadControllerLibraries"},
+          {"package": "controller_manager", "name": "~/switch_controller", "type": "controller_manager_msgs/srv/SwitchController"},
+          {"package": "controller_manager", "name": "~/unload_controller", "type": "controller_manager_msgs/srv/UnloadController"},
+          {"package": "controller_manager", "name": "~/cleanup_controller", "type": "controller_manager_msgs/srv/CleanupController"},
+          {"package": "controller_manager", "name": "~/list_hardware_components", "type": "controller_manager_msgs/srv/ListHardwareComponents"},
+          {"package": "controller_manager", "name": "~/list_hardware_interfaces", "type": "controller_manager_msgs/srv/ListHardwareInterfaces"},
+          {"package": "controller_manager", "name": "~/set_hardware_component_state", "type": "controller_manager_msgs/srv/SetHardwareComponentState"}
         ]
       }
     }
