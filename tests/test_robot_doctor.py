@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -243,6 +245,59 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertIn("RD301", codes)
         self.assertIn("RD302", codes)
         self.assertTrue(all(item["severity"] == "info" for item in data["diagnostics"] if item["code"] == "RD101"))
+        self.assertTrue(all(item["remediation"]["steps"] for item in data["diagnostics"]))
+        dependency_finding = next(item for item in data["diagnostics"] if item["code"] == "RD101")
+        self.assertIn("<depend>geometry_msgs</depend>", dependency_finding["remediation"]["patch_hint"])
+        self.assertIn("rosdep check --from-paths src --ignore-src", dependency_finding["remediation"]["commands"])
+        for item in combined["diagnostics"]:
+            commands = "\n".join(item["remediation"]["commands"])
+            if item.get("topic"):
+                self.assertNotIn("<topic>", commands)
+                self.assertIn(item["topic"], commands)
+            if item.get("interface") and item["code"] in {"RD204", "RD205", "RD206", "RD207"}:
+                self.assertIn(item["interface"], commands)
+        mismatch_commands = {
+            code: "\n".join(next(item for item in combined["diagnostics"] if item["code"] == code)["remediation"]["commands"])
+            for code in ("RD201", "RD204", "RD206")
+        }
+        self.assertIn("ros2 interface show std_msgs/msg/String", mismatch_commands["RD201"])
+        self.assertIn("ros2 interface show std_srvs/srv/Trigger", mismatch_commands["RD204"])
+        self.assertIn("ros2 interface show example_interfaces/action/Fibonacci", mismatch_commands["RD206"])
+        self.assertNotIn("<interface-type>", "\n".join(mismatch_commands.values()))
+
+    def test_scan_records_reproducibility_provenance(self):
+        data = ros_repo_discover.scan_repository(FIXTURES / "python_robot")
+        provenance = data["provenance"]
+
+        self.assertTrue(provenance["started_at"].endswith("Z"))
+        self.assertTrue(provenance["completed_at"].endswith("Z"))
+        self.assertGreaterEqual(provenance["duration_seconds"], 0)
+        self.assertEqual(set(provenance["git"]), {"commit_sha", "branch", "dirty"})
+        self.assertEqual(set(provenance["input"]), {"source_type", "archive_sha256", "content_sha256"})
+        self.assertTrue(provenance["environment"]["python_version"])
+        self.assertIn("platform", provenance["environment"])
+
+    @unittest.skipUnless(shutil.which("git"), "Git is required for the provenance security regression")
+    def test_git_provenance_disables_repository_fsmonitor_and_hooks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "repository"
+            package = root / "safe_package"
+            self.write_minimal_package(package, "safe_package")
+            subprocess.run(["git", "-C", str(root), "init", "--quiet"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.name", "Robot Doctor Test"], check=True)
+            subprocess.run(["git", "-C", str(root), "config", "user.email", "robot-doctor@example.com"], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(root), "commit", "--quiet", "-m", "fixture"], check=True)
+            marker = Path(directory) / "fsmonitor-executed"
+            hook = Path(directory) / "fsmonitor-hook"
+            hook.write_text(f"#!/bin/sh\nprintf invoked > '{marker}'\nprintf 'token\\n'\n", encoding="utf-8")
+            hook.chmod(0o755)
+            subprocess.run(["git", "-C", str(root), "config", "core.fsmonitor", str(hook)], check=True)
+
+            data = ros_repo_discover.scan_repository(root)
+
+            self.assertFalse(marker.exists(), "repository-local core.fsmonitor executed during provenance collection")
+            self.assertIsNotNone(data["provenance"]["git"]["commit_sha"])
 
     def test_every_inventory_entity_has_evidence_and_confidence(self):
         data = ros_repo_discover.scan_repository(FIXTURES)
@@ -322,6 +377,8 @@ class RobotDoctorScannerTests(unittest.TestCase):
 
         self.assertFalse(schema["additionalProperties"])
         self.assertEqual(schema["properties"]["configuration"]["$ref"], "#/$defs/configuration")
+        self.assertEqual(schema["properties"]["provenance"]["$ref"], "#/$defs/provenance")
+        self.assertEqual(set(definitions["provenance"]["properties"]["input"]["required"]), {"source_type", "archive_sha256", "content_sha256"})
         self.assertEqual(definitions["packageReport"]["properties"]["publishers"]["items"]["$ref"], "#/$defs/finding")
         self.assertEqual(definitions["launchGraph"]["properties"]["files"]["items"]["$ref"], "#/$defs/launchFile")
         self.assertEqual(definitions["launchFile"]["properties"]["actions"]["items"]["$ref"], "#/$defs/launchAction")
@@ -332,6 +389,8 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertTrue({"kind", "name", "type", "file", "line", "confidence", "resolved", "evidence"} <= set(definitions["finding"]["required"]))
         self.assertTrue({"file", "format", "package", "actions", "includes", "arguments", "confidence", "evidence"} <= set(definitions["launchFile"]["required"]))
         self.assertTrue({"id", "name", "namespace", "package", "origin", "active", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "parameters", "confidence", "evidence"} <= set(definitions["node"]["required"]))
+        self.assertIn("remediation", definitions["diagnostic"]["required"])
+        self.assertEqual(definitions["diagnostic"]["properties"]["remediation"]["properties"]["patch_hint"]["$ref"], "#/$defs/nullableString")
 
     def test_packaged_schema_matches_root_contract(self):
         root_schema = (WORKSPACE / "schemas" / "robot_doctor_scan.schema.json").read_text(encoding="utf-8")

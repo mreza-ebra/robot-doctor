@@ -3,6 +3,11 @@ include README.md
 include CHANGELOG.md
 include SECURITY.md
 include .robot-doctor.example.json
+include .dockerignore
+include Dockerfile
+include compose.yaml
+include start_robot_doctor.command
+include stop_robot_doctor.command
 recursive-include docs *.md
 recursive-include schemas *.json
 recursive-include tests *.py *.json *.md *.xml *.yaml *.cpp *.hpp *.msg *.urdf CMakeLists.txt setup.py setup.cfg pyproject.toml

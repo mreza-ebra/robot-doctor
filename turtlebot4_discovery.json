@@ -3842,6 +3842,20 @@
       "fact_type": "diagnostic",
       "message": "turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
+      "remediation": {
+        "commands": [
+          "rosdep check --from-paths src --ignore-src"
+        ],
+        "patch_hint": "<depend>action_msgs</depend>",
+        "steps": [
+          "Confirm the reference is required at build or runtime.",
+          "Add the dependency to package.xml and run rosdep."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py"
+        ],
+        "summary": "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external."
+      },
       "severity": "info",
       "title": "Possible undeclared dependency"
     },
@@ -3861,6 +3875,20 @@
       "fact_type": "diagnostic",
       "message": "turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
+      "remediation": {
+        "commands": [
+          "rosdep check --from-paths src --ignore-src"
+        ],
+        "patch_hint": "<depend>geometry_msgs</depend>",
+        "steps": [
+          "Confirm the reference is required at build or runtime.",
+          "Add the dependency to package.xml and run rosdep."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py"
+        ],
+        "summary": "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external."
+      },
       "severity": "info",
       "title": "Possible undeclared dependency"
     },
@@ -3880,6 +3908,20 @@
       "fact_type": "diagnostic",
       "message": "turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
+      "remediation": {
+        "commands": [
+          "rosdep check --from-paths src --ignore-src"
+        ],
+        "patch_hint": "<depend>irobot_create_msgs</depend>",
+        "steps": [
+          "Confirm the reference is required at build or runtime.",
+          "Add the dependency to package.xml and run rosdep."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py"
+        ],
+        "summary": "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external."
+      },
       "severity": "info",
       "title": "Possible undeclared dependency"
     },
@@ -3899,6 +3941,20 @@
       "fact_type": "diagnostic",
       "message": "turtlebot4_navigation references 'rclpy' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency.",
       "package": "turtlebot4_navigation",
+      "remediation": {
+        "commands": [
+          "rosdep check --from-paths src --ignore-src"
+        ],
+        "patch_hint": "<depend>rclpy</depend>",
+        "steps": [
+          "Confirm the reference is required at build or runtime.",
+          "Add the dependency to package.xml and run rosdep."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py"
+        ],
+        "summary": "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external."
+      },
       "severity": "info",
       "title": "Possible undeclared dependency"
     },
@@ -3915,6 +3971,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'battery_state' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info battery_state --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "battery_state"
@@ -3938,6 +4009,22 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'dock_status' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info dock_status --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py",
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "dock_status"
@@ -3955,6 +4042,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'function_calls' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info function_calls --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "function_calls"
@@ -3972,6 +4074,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/buttons' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/buttons --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/buttons.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/buttons"
@@ -3989,6 +4106,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/display' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/display --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/display.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/display"
@@ -4006,6 +4138,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/display/message' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/display/message --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/display.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/display/message"
@@ -4023,6 +4170,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led"
@@ -4040,6 +4202,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_battery' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_battery --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_battery"
@@ -4057,6 +4234,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_comms' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_comms --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_comms"
@@ -4074,6 +4266,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_motors' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_motors --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_motors"
@@ -4091,6 +4298,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_power' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_power --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_power"
@@ -4108,6 +4330,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_user1' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_user1 --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_user1"
@@ -4125,6 +4362,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_user2' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_user2 --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_user2"
@@ -4142,6 +4394,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'hmi/led/_wifi' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info hmi/led/_wifi --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/leds.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "hmi/led/_wifi"
@@ -4159,6 +4426,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'initialpose' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info initialpose --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "initialpose"
@@ -4176,6 +4458,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'interface_buttons' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info interface_buttons --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/buttons.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "interface_buttons"
@@ -4193,6 +4490,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'ip' has no statically detected subscriber. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info ip --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "ip"
@@ -4210,6 +4522,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'joy' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info joy --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/buttons.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "joy"
@@ -4227,6 +4554,21 @@
       ],
       "fact_type": "diagnostic",
       "message": "Topic 'wheel_status' has no statically detected publisher. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 topic list",
+          "ros2 topic info wheel_status --verbose"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete launch deployment.",
+          "Add the missing publisher/subscriber or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external."
+      },
       "severity": "info",
       "title": "Orphan topic endpoint",
       "topic": "wheel_status"
@@ -4245,6 +4587,21 @@
       "fact_type": "diagnostic",
       "interface": "e_stop",
       "message": "Service 'e_stop' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 service list -t",
+          "ros2 service type e_stop"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing service endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan service endpoint"
     },
@@ -4262,6 +4619,21 @@
       "fact_type": "diagnostic",
       "interface": "oakd/start_camera",
       "message": "Service 'oakd/start_camera' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 service list -t",
+          "ros2 service type oakd/start_camera"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing service endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan service endpoint"
     },
@@ -4279,6 +4651,21 @@
       "fact_type": "diagnostic",
       "interface": "oakd/stop_camera",
       "message": "Service 'oakd/stop_camera' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 service list -t",
+          "ros2 service type oakd/stop_camera"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing service endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan service endpoint"
     },
@@ -4296,6 +4683,21 @@
       "fact_type": "diagnostic",
       "interface": "robot_power",
       "message": "Service 'robot_power' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 service list -t",
+          "ros2 service type robot_power"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing service endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan service endpoint"
     },
@@ -4313,6 +4715,21 @@
       "fact_type": "diagnostic",
       "interface": "start_motor",
       "message": "Service 'start_motor' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 service list -t",
+          "ros2 service type start_motor"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing service endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan service endpoint"
     },
@@ -4330,6 +4747,21 @@
       "fact_type": "diagnostic",
       "interface": "stop_motor",
       "message": "Service 'stop_motor' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 service list -t",
+          "ros2 service type stop_motor"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing service endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan service endpoint"
     },
@@ -4353,6 +4785,22 @@
       "fact_type": "diagnostic",
       "interface": "dock",
       "message": "Action 'dock' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 action list -t",
+          "ros2 action info dock"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py",
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing action endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan action endpoint"
     },
@@ -4370,6 +4818,21 @@
       "fact_type": "diagnostic",
       "interface": "led_animation",
       "message": "Action 'led_animation' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 action list -t",
+          "ros2 action info led_animation"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing action endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan action endpoint"
     },
@@ -4393,6 +4856,22 @@
       "fact_type": "diagnostic",
       "interface": "undock",
       "message": "Action 'undock' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 action list -t",
+          "ros2 action info undock"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_navigation/turtlebot4_navigation/turtlebot4_navigator.py",
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing action endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan action endpoint"
     },
@@ -4410,6 +4889,21 @@
       "fact_type": "diagnostic",
       "interface": "wall_follow",
       "message": "Action 'wall_follow' has no statically detected server. Runtime or external nodes may provide it.",
+      "remediation": {
+        "commands": [
+          "ros2 action list -t",
+          "ros2 action info wall_follow"
+        ],
+        "patch_hint": null,
+        "steps": [
+          "Confirm the complete deployment.",
+          "Add the missing server/client or document the external dependency."
+        ],
+        "suggested_files": [
+          "turtlebot4_node/src/turtlebot4.cpp"
+        ],
+        "summary": "Launch or implement the missing action endpoint, or suppress this code when it is external."
+      },
       "severity": "info",
       "title": "Orphan action endpoint"
     }
@@ -15579,6 +16073,28 @@
       "urdf_files": []
     }
   ],
+  "provenance": {
+    "completed_at": "2026-07-21T18:59:38.024476Z",
+    "duration_seconds": 0.089779,
+    "environment": {
+      "architecture": "arm64",
+      "platform": "Darwin",
+      "platform_release": "25.5.0",
+      "python_version": "3.13.6"
+    },
+    "git": {
+      "branch": "jazzy",
+      "commit_sha": "7fd29fb420e906f3aca4a904adb54b69b11c7c00",
+      "dirty": true
+    },
+    "input": {
+      "archive_sha256": null,
+      "content_sha256": null,
+      "source_type": "local"
+    },
+    "ros_distribution": null,
+    "started_at": "2026-07-21T18:59:37.934625Z"
+  },
   "repository": {
     "name": "turtlebot4",
     "path": "/Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4",
@@ -15595,7 +16111,7 @@
     "name": "robot-doctor-static",
     "version": "0.5.0"
   },
-  "schema_version": "1.2.0",
+  "schema_version": "1.3.0",
   "summary": {
     "actions": 6,
     "diagnostics": {

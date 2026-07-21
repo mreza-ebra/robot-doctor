@@ -1,0 +1,11 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+build
+dist
+real_repositories
+turtlebot4
+project_overviews
+tests

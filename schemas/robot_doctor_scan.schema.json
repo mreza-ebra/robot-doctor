@@ -8,6 +8,7 @@
     "schema_version",
     "scanner",
     "repository",
+    "provenance",
     "configuration",
     "package_count",
     "packages",
@@ -18,9 +19,10 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.2.0"},
+    "schema_version": {"const": "1.3.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
+    "provenance": {"$ref": "#/$defs/provenance"},
     "configuration": {"$ref": "#/$defs/configuration"},
     "package_count": {"type": "integer", "minimum": 0},
     "packages": {"type": "array", "items": {"$ref": "#/$defs/packageReport"}},
@@ -93,6 +95,48 @@
         "name": {"type": "string"},
         "source": {"type": "string"},
         "source_type": {"enum": ["local", "git", "upload"]}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["started_at", "completed_at", "duration_seconds", "git", "input", "ros_distribution", "environment"],
+      "properties": {
+        "started_at": {"type": "string", "format": "date-time"},
+        "completed_at": {"type": "string", "format": "date-time"},
+        "duration_seconds": {"type": "number", "minimum": 0},
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commit_sha", "branch", "dirty"],
+          "properties": {
+            "commit_sha": {"$ref": "#/$defs/nullableString"},
+            "branch": {"$ref": "#/$defs/nullableString"},
+            "dirty": {"type": ["boolean", "null"]}
+          }
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source_type", "archive_sha256", "content_sha256"],
+          "properties": {
+            "source_type": {"enum": ["local", "git", "upload"]},
+            "archive_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+            "content_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"}
+          }
+        },
+        "ros_distribution": {"$ref": "#/$defs/nullableString"},
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["python_version", "platform", "platform_release", "architecture"],
+          "properties": {
+            "python_version": {"type": "string"},
+            "platform": {"type": "string"},
+            "platform_release": {"type": "string"},
+            "architecture": {"type": "string"}
+          }
+        }
       }
     },
     "package": {
@@ -506,7 +550,7 @@
     },
     "diagnostic": {
       "type": "object",
-      "required": ["code", "severity", "title", "message", "fact_type", "confidence", "evidence"],
+      "required": ["code", "severity", "title", "message", "fact_type", "confidence", "evidence", "remediation"],
       "properties": {
         "code": {"type": "string", "pattern": "^RD[0-9]{3}$"},
         "severity": {"enum": ["error", "warning", "info"]},
@@ -514,7 +558,19 @@
         "message": {"type": "string"},
         "fact_type": {"const": "diagnostic"},
         "confidence": {"$ref": "#/$defs/confidence"},
-        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}}
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "remediation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summary", "steps", "commands", "suggested_files", "patch_hint"],
+          "properties": {
+            "summary": {"type": "string", "minLength": 1},
+            "steps": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+            "commands": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "suggested_files": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+            "patch_hint": {"$ref": "#/$defs/nullableString"}
+          }
+        }
       },
       "additionalProperties": true
     },

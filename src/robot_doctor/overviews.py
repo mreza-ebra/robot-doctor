@@ -261,7 +261,19 @@ def effective_parameter_rows(data: dict[str, Any]) -> list[list[Any]]:
 
 
 def diagnostics_rows(data: dict[str, Any]) -> list[list[Any]]:
-    return [[item["severity"], item["code"], item["title"], item["message"], certainty(item), first_evidence(item)] for item in data["diagnostics"]]
+    return [
+        [
+            item["severity"],
+            item["code"],
+            item["title"],
+            item["message"],
+            item.get("remediation", {}).get("summary", ""),
+            item.get("remediation", {}).get("commands", []),
+            certainty(item),
+            first_evidence(item),
+        ]
+        for item in data["diagnostics"]
+    ]
 
 
 def architecture_rows(data: dict[str, Any], key: str) -> list[list[Any]]:
@@ -399,7 +411,7 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 ## Important Findings
 
-{md_table(['Severity', 'Code', 'Finding', 'Meaning', 'Certainty', 'Evidence'], diagnostics_rows(data)[:15])}
+{md_table(['Severity', 'Code', 'Finding', 'Meaning', 'Recommended repair', 'Verification commands', 'Certainty', 'Evidence'], diagnostics_rows(data)[:15])}
 """
 
 
@@ -494,7 +506,7 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 
 ## Diagnostics
 
-{md_table(['Severity', 'Code', 'Finding', 'Meaning', 'Certainty', 'Evidence'], diagnostics_rows(data))}
+{md_table(['Severity', 'Code', 'Finding', 'Meaning', 'Recommended repair', 'Verification commands', 'Certainty', 'Evidence'], diagnostics_rows(data))}
 """
 
 
@@ -511,6 +523,15 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 - Scanner: `{data['scanner']['name']} {data['scanner']['version']}`
 - Mode: `{data['scanner']['mode']}`
 - Fact classes: detected, inferred, diagnostic
+- Started: `{data['provenance']['started_at']}`
+- Completed: `{data['provenance']['completed_at']}`
+- Duration: `{data['provenance']['duration_seconds']:.3f}` seconds
+- Git commit: `{data['provenance']['git']['commit_sha'] or 'not detected'}`
+- Git branch: `{data['provenance']['git']['branch'] or 'detached or not detected'}`
+- Input type: `{data['provenance']['input']['source_type']}`
+- Archive SHA-256: `{data['provenance']['input']['archive_sha256'] or 'not applicable'}`
+- Content SHA-256: `{data['provenance']['input']['content_sha256'] or 'not calculated'}`
+- ROS distribution: `{data['provenance']['ros_distribution'] or 'not sourced'}`
 
 {factual_scope(data)} Every inventory item carries evidence and confidence in the JSON output. Unresolved expressions remain visible rather than becoming empty names.
 
@@ -612,7 +633,7 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 
 ## Diagnostics
 
-{md_table(['Severity', 'Code', 'Finding', 'Meaning', 'Certainty', 'Evidence'], diagnostics_rows(data))}
+{md_table(['Severity', 'Code', 'Finding', 'Meaning', 'Recommended repair', 'Verification commands', 'Certainty', 'Evidence'], diagnostics_rows(data))}
 
 ## Limitations
 

@@ -1,5 +1,6 @@
 Repository: /Users/rezaebrahimi/Documents/Robot Doctor/turtlebot4
-Schema: 1.2.0  Scanner: 0.5.0 (static)
+Schema: 1.3.0  Scanner: 0.5.0 (static)
+Scanned: 2026-07-21T18:59:38.209378Z in 0.080s; Git: 7fd29fb420e906f3aca4a904adb54b69b11c7c00
 Packages: 4
 Entities: 38 resolved, 1 unresolved; skipped files: 0
 Diagnostic policy: dependency_mode=direct, suppressed=0
@@ -72,38 +73,133 @@ turtlebot4_node (turtlebot4_node)
 
 Diagnostics:
   - INFO RD101: turtlebot4_navigation references 'action_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+    Repair: Declare the referenced ROS package dependency or suppress the finding if it is intentionally external.
+    Command: rosdep check --from-paths src --ignore-src
   - INFO RD101: turtlebot4_navigation references 'geometry_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+    Repair: Declare the referenced ROS package dependency or suppress the finding if it is intentionally external.
+    Command: rosdep check --from-paths src --ignore-src
   - INFO RD101: turtlebot4_navigation references 'irobot_create_msgs' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+    Repair: Declare the referenced ROS package dependency or suppress the finding if it is intentionally external.
+    Command: rosdep check --from-paths src --ignore-src
   - INFO RD101: turtlebot4_navigation references 'rclpy' but package.xml does not declare it. This reference is indirect and may be a namespace, test-only import, or transitive dependency. (confidence=0.58)
+    Repair: Declare the referenced ROS package dependency or suppress the finding if it is intentionally external.
+    Command: rosdep check --from-paths src --ignore-src
   - INFO RD202: Topic 'battery_state' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info battery_state --verbose
   - INFO RD202: Topic 'dock_status' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info dock_status --verbose
   - INFO RD202: Topic 'function_calls' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info function_calls --verbose
   - INFO RD202: Topic 'hmi/buttons' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/buttons --verbose
   - INFO RD202: Topic 'hmi/display' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/display --verbose
   - INFO RD202: Topic 'hmi/display/message' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/display/message --verbose
   - INFO RD202: Topic 'hmi/led' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led --verbose
   - INFO RD202: Topic 'hmi/led/_battery' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_battery --verbose
   - INFO RD202: Topic 'hmi/led/_comms' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_comms --verbose
   - INFO RD202: Topic 'hmi/led/_motors' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_motors --verbose
   - INFO RD202: Topic 'hmi/led/_power' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_power --verbose
   - INFO RD202: Topic 'hmi/led/_user1' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_user1 --verbose
   - INFO RD202: Topic 'hmi/led/_user2' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_user2 --verbose
   - INFO RD202: Topic 'hmi/led/_wifi' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info hmi/led/_wifi --verbose
   - INFO RD202: Topic 'initialpose' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info initialpose --verbose
   - INFO RD202: Topic 'interface_buttons' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info interface_buttons --verbose
   - INFO RD202: Topic 'ip' has no statically detected subscriber. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info ip --verbose
   - INFO RD202: Topic 'joy' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info joy --verbose
   - INFO RD202: Topic 'wheel_status' has no statically detected publisher. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.
+    Command: ros2 topic list
+    Command: ros2 topic info wheel_status --verbose
   - INFO RD205: Service 'e_stop' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing service endpoint, or suppress this code when it is external.
+    Command: ros2 service list -t
+    Command: ros2 service type e_stop
   - INFO RD205: Service 'oakd/start_camera' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing service endpoint, or suppress this code when it is external.
+    Command: ros2 service list -t
+    Command: ros2 service type oakd/start_camera
   - INFO RD205: Service 'oakd/stop_camera' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing service endpoint, or suppress this code when it is external.
+    Command: ros2 service list -t
+    Command: ros2 service type oakd/stop_camera
   - INFO RD205: Service 'robot_power' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing service endpoint, or suppress this code when it is external.
+    Command: ros2 service list -t
+    Command: ros2 service type robot_power
   - INFO RD205: Service 'start_motor' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing service endpoint, or suppress this code when it is external.
+    Command: ros2 service list -t
+    Command: ros2 service type start_motor
   - INFO RD205: Service 'stop_motor' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing service endpoint, or suppress this code when it is external.
+    Command: ros2 service list -t
+    Command: ros2 service type stop_motor
   - INFO RD207: Action 'dock' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing action endpoint, or suppress this code when it is external.
+    Command: ros2 action list -t
+    Command: ros2 action info dock
   - INFO RD207: Action 'led_animation' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing action endpoint, or suppress this code when it is external.
+    Command: ros2 action list -t
+    Command: ros2 action info led_animation
   - INFO RD207: Action 'undock' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing action endpoint, or suppress this code when it is external.
+    Command: ros2 action list -t
+    Command: ros2 action info undock
   - INFO RD207: Action 'wall_follow' has no statically detected server. Runtime or external nodes may provide it. (confidence=0.62)
+    Repair: Launch or implement the missing action endpoint, or suppress this code when it is external.
+    Command: ros2 action list -t
+    Command: ros2 action info wall_follow
 
 Limitations:
   - Static analysis cannot prove runtime names, substitutions, remappings, plugin loading, or external nodes.

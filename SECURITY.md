@@ -6,16 +6,16 @@ Robot Doctor is currently a local-only beta. Security fixes target the latest `0
 
 ## Reporting A Vulnerability
 
-Do not open a public issue containing exploit details. Once the official GitHub repository is configured, use its private vulnerability-reporting feature. Until then, report privately to the repository owner through the same trusted channel used to receive the software.
+Do not open a public issue containing exploit details. Use the official GitHub repository's private vulnerability-reporting feature once it is enabled; until then, report privately to the repository owner through the same trusted channel used to receive the software.
 
 Include the affected version or commit, operating system, reproduction steps, impact, and whether untrusted repository content is required. Expect an acknowledgement within five business days; remediation timing depends on severity and reproducibility.
 
 ## Deployment Boundary
 
-`robot-doctor-web` is designed for one user on a loopback interface. It rejects non-loopback binding and applies CSRF, Origin, Host, task-count, upload, extraction, checkout, traversal, and read limits. These controls do not make it a multi-user hosted service.
+`robot-doctor-web` is designed for one user on a loopback interface. Direct launches reject non-loopback binding. The supplied container explicitly binds inside Docker to `0.0.0.0`, while Compose publishes the port only to host `127.0.0.1`; Host validation remains loopback-only. The application applies CSRF, Origin, Host, task-count, upload, extraction, checkout, traversal, and read limits. These controls do not make it a multi-user hosted service.
 
 Do not expose the beta web server through a reverse proxy or public tunnel. Before hosted deployment, add authentication, per-user authorization, durable audit logging, service-wide quotas, DNS resolution checks, redirect-destination validation, network egress policy, isolated workers, and persistent-result retention/deletion controls.
 
 ## Untrusted Input
 
-Treat scanned repositories and archives as hostile. Robot Doctor performs static reads and does not build or execute repository code, ignores repository-owned configuration for Git and upload intake, rejects ZIP links and unsafe paths, and skips repository symlinks. Static parsing and Git transport libraries may still contain defects; use least-privilege execution and avoid scanning secrets.
+Treat scanned repositories and archives as hostile. Robot Doctor performs static reads and does not build or execute repository code, ignores repository-owned scanner configuration for Git and upload intake, rejects ZIP links, unsafe paths, and every `.git` archive path component, and skips repository symlinks. Git provenance subprocesses ignore global/system Git configuration and explicitly disable hooks, `core.fsmonitor`, and the untracked cache before reading revision metadata. ZIP results record both archive and extracted-content SHA-256 values. Private Git tokens are injected only into the clone subprocess environment and are not stored; nevertheless, use read-only, repository-scoped, short-lived tokens. Static parsing and Git transport libraries may still contain defects; use least-privilege execution and avoid scanning secrets.

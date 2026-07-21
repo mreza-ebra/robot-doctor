@@ -6,7 +6,7 @@
       "category": "mobile_robot_cpp",
       "url": "https://github.com/turtlebot/turtlebot4.git",
       "revision": "7fd29fb420e906f3aca4a904adb54b69b11c7c00",
-      "path": "real_repositories/turtlebot4",
+      "path": "turtlebot4",
       "expected": {
         "packages": 4,
         "launch_files": 4,

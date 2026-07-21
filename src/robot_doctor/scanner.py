@@ -9,11 +9,16 @@ import configparser
 import contextvars
 import json
 import os
+import platform
 import re
+import shlex
+import subprocess
 import sys
+import time
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator
 
@@ -25,7 +30,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.2.0"
+SCHEMA_VERSION = "1.3.0"
 SCANNER_VERSION = "0.5.0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -1939,9 +1944,203 @@ def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[s
     return transforms, sensors, sorted(frames)
 
 
+def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any]:
+    suggested_files = sorted({str(item.get("file")) for item in evidence_items if item.get("file")})
+    remediations = {
+        "RD001": (
+            "Add or select a ROS 2 package before rescanning.",
+            ["Confirm the scan root contains the source workspace.", "Add a valid package.xml to each intended package."],
+            ["find . -name package.xml -not -path '*/build/*'", "colcon list"],
+            "<package format=\"3\">...</package>",
+        ),
+        "RD002": (
+            "Repair the malformed package manifest.",
+            ["Open the reported package.xml at the evidence line.", "Validate the XML and rescan."],
+            ["xmllint --noout <path/to/package.xml>"],
+            None,
+        ),
+        "RD003": (
+            "Fix the Python syntax error so static extraction can inspect the file.",
+            ["Open the reported source line.", "Compile the file and rescan."],
+            ["python3 -m py_compile <path/to/source.py>"],
+            None,
+        ),
+        "RD004": (
+            "Make the reported file readable or repair the launch syntax.",
+            ["Check permissions and the evidence line.", "Validate the file with its native parser, then rescan."],
+            ["ls -l <path>", "python3 -m py_compile <path/to/launch.py>"],
+            None,
+        ),
+        "RD005": (
+            "Repair invalid XML or explicitly raise the source-file limit for a trusted repository.",
+            ["Inspect the reported file and evidence.", "Fix XML syntax or increase max_file_size_bytes deliberately."],
+            ["xmllint --noout <path/to/file.xml>", "robot-doctor-scan . --max-file-size-mb <MiB>"],
+            None,
+        ),
+        "RD006": (
+            "Give every source package a unique package name.",
+            ["Review each reported package.xml.", "Rename or remove the duplicate package and update references."],
+            ["colcon list | sort"],
+            "Change one <name> value and update dependent package.xml and launch references.",
+        ),
+        "RD007": (
+            "Reduce the scan scope or explicitly raise the file-count limit.",
+            ["Exclude generated or vendor trees with COLCON_IGNORE.", "Raise max_files only for a trusted input."],
+            ["touch <generated-directory>/COLCON_IGNORE", "robot-doctor-scan . --max-files <count>"],
+            None,
+        ),
+        "RD009": (
+            "Reduce source input size or explicitly raise the total-byte limit.",
+            ["Exclude generated or vendored content.", "Raise max_total_size_bytes only after reviewing the repository."],
+            ["robot-doctor-scan . --max-total-size-mb <MiB>"],
+            None,
+        ),
+        "RD010": (
+            "Reduce repository breadth or explicitly raise the traversal limit.",
+            ["Mark irrelevant subtrees with COLCON_IGNORE.", "Raise max_repository_entries only for trusted input."],
+            ["touch <irrelevant-directory>/COLCON_IGNORE", "robot-doctor-scan . --max-repository-entries <count>"],
+            None,
+        ),
+        "RD101": (
+            "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external.",
+            ["Confirm the reference is required at build or runtime.", "Add the dependency to package.xml and run rosdep."],
+            ["rosdep check --from-paths src --ignore-src"],
+            f"<depend>{context.get('dependency', '<dependency>')}</depend>",
+        ),
+        "RD102": (
+            "Add the missing CMake build definition or correct the package build type.",
+            ["Create CMakeLists.txt for the ament_cmake package.", "Declare targets, installation, and ament_package()."],
+            ["colcon build --packages-select <package>"],
+            "cmake_minimum_required(VERSION 3.8)\nproject(<package>)\nfind_package(ament_cmake REQUIRED)\nament_package()",
+        ),
+        "RD103": (
+            "Add Python packaging metadata or correct the package build type.",
+            ["Define package metadata in pyproject.toml, setup.cfg, or setup.py.", "Register node executables and rebuild."],
+            ["python3 -m build", "colcon build --packages-select <package>"],
+            "[project.scripts]\n<node> = \"<module>:main\"",
+        ),
+        "RD104": (
+            "Install the CMake executable so ros2 run and launch can find it.",
+            ["Add the target to install(TARGETS ...).", "Rebuild and verify the installed executable."],
+            ["colcon build --packages-select <package>", "ros2 pkg executables <package>"],
+            "install(TARGETS <target> DESTINATION lib/${PROJECT_NAME})",
+        ),
+        "RD201": (
+            "Make every endpoint on the topic use the same fully qualified message type.",
+            ["Inspect publishers and subscribers in the evidence list.", "Align their interface imports and rebuild."],
+            ["ros2 topic info <topic> --verbose", "ros2 interface show <interface-type>"],
+            None,
+        ),
+        "RD202": (
+            "Launch or implement the missing topic endpoint, or suppress this code when the endpoint is external.",
+            ["Confirm the complete launch deployment.", "Add the missing publisher/subscriber or document the external dependency."],
+            ["ros2 topic list", "ros2 topic info <topic> --verbose"],
+            None,
+        ),
+        "RD203": (
+            "Align publisher and subscriber QoS policies.",
+            ["Compare reliability, durability, history, and depth.", "Change one endpoint to a compatible QoS profile."],
+            ["ros2 topic info <topic> --verbose"],
+            "Use matching reliability and durability settings on both endpoints.",
+        ),
+        "RD204": (
+            "Make every service endpoint use the same fully qualified service type.",
+            ["Inspect the reported servers and clients.", "Align their service interface types and rebuild."],
+            ["ros2 service type <service>", "ros2 interface show <interface-type>"],
+            None,
+        ),
+        "RD205": (
+            "Launch or implement the missing service endpoint, or suppress this code when it is external.",
+            ["Confirm the complete deployment.", "Add the missing server/client or document the external dependency."],
+            ["ros2 service list -t", "ros2 service type <service>"],
+            None,
+        ),
+        "RD206": (
+            "Make every action endpoint use the same fully qualified action type.",
+            ["Inspect the reported action servers and clients.", "Align their action interface types and rebuild."],
+            ["ros2 action info <action>", "ros2 interface show <interface-type>"],
+            None,
+        ),
+        "RD207": (
+            "Launch or implement the missing action endpoint, or suppress this code when it is external.",
+            ["Confirm the complete deployment.", "Add the missing server/client or document the external dependency."],
+            ["ros2 action list -t", "ros2 action info <action>"],
+            None,
+        ),
+        "RD301": (
+            "Correct the launch include path or install the included launch file.",
+            ["Resolve substitutions and package-share references.", "Fix the include and verify the target is installed."],
+            ["ros2 launch <package> <launch-file> --show-args"],
+            "Use get_package_share_directory('<package>') and an existing relative launch path.",
+        ),
+        "RD302": (
+            "Add the referenced parameter file or correct its launch path.",
+            ["Locate the intended YAML file.", "Update the launch reference and install the config directory."],
+            ["find . -name '*.yaml' -o -name '*.yml'"],
+            "install(DIRECTORY config DESTINATION share/${PROJECT_NAME})",
+        ),
+        "RD303": (
+            "Register and install the executable referenced by launch.",
+            ["Confirm the executable spelling and package.", "Add it to Python entry points or CMake installation."],
+            ["ros2 pkg executables <package>", "colcon build --packages-select <package>"],
+            None,
+        ),
+        "RD401": (
+            "Give the TF child frame exactly one parent in each robot model.",
+            ["Inspect the reported URDF joints.", "Remove or rename the duplicate parent relationship."],
+            ["check_urdf <robot.urdf>", "ros2 run tf2_tools view_frames"],
+            None,
+        ),
+        "RD402": (
+            "Break the cycle in the URDF/TF parent-child graph.",
+            ["Trace the reported frame chain.", "Remove or redirect one cyclic joint and validate the model."],
+            ["check_urdf <robot.urdf>", "ros2 run tf2_tools view_frames"],
+            None,
+        ),
+    }
+    summary, steps, commands, patch_hint = remediations.get(
+        code,
+        (
+            "Review the evidence, correct the source configuration, and rescan.",
+            ["Open the first evidence location.", "Confirm the intended ROS behavior and rescan."],
+            ["robot-doctor-scan . --json --output scan.json"],
+            None,
+        ),
+    )
+    interface_name = context.get("interface")
+    substitutions = {
+        "<topic>": context.get("topic"),
+        "<service>": interface_name if code in {"RD204", "RD205"} else None,
+        "<action>": interface_name if code in {"RD206", "RD207"} else None,
+        "<package>": context.get("package"),
+        "<launch-file>": context.get("launch_file"),
+        "<path>": suggested_files[0] if suggested_files else None,
+    }
+    resolved_commands = []
+    for command in commands:
+        if "<interface-type>" in command:
+            interface_types = sorted({str(value) for value in context.get("interface_types", []) if value})
+            resolved_commands.extend(command.replace("<interface-type>", shlex.quote(value)) for value in interface_types)
+            if interface_types:
+                continue
+        for placeholder, value in substitutions.items():
+            if value:
+                command = command.replace(placeholder, shlex.quote(str(value)))
+        resolved_commands.append(command)
+    return {
+        "summary": summary,
+        "steps": steps,
+        "commands": resolved_commands,
+        "suggested_files": suggested_files,
+        "patch_hint": patch_hint,
+    }
+
+
 def diagnostic(code: str, severity: str, title: str, message: str, evidence_items: list[dict[str, Any]], confidence: float, **extra: Any) -> dict[str, Any]:
+    remediation_context = extra.pop("_remediation_context", {})
     result = {"code": code, "severity": severity, "title": title, "message": message, "fact_type": "diagnostic", "confidence": round(confidence, 2), "evidence": evidence_items}
     result.update(extra)
+    result["remediation"] = diagnostic_remediation(code, evidence_items, {**extra, **remediation_context})
     return result
 
 
@@ -2389,7 +2588,7 @@ def run_diagnostics(
         has_type_mismatch = len(qualified_types) > 1 or (not qualified_types and len(type_basenames) > 1)
         if has_type_mismatch:
             deployed_together = endpoints_share_deployment([topic["publishers"], topic["subscribers"]])
-            diagnostics.append(diagnostic("RD201", "error" if deployed_together else "warning", "Topic type mismatch", f"Topic '{topic['name']}' uses multiple static types: {', '.join(topic['types'])}." + ("" if deployed_together else " The endpoints are not proven to run together."), topic["evidence"], 0.96 if deployed_together else 0.72, topic=topic["name"]))
+            diagnostics.append(diagnostic("RD201", "error" if deployed_together else "warning", "Topic type mismatch", f"Topic '{topic['name']}' uses multiple static types: {', '.join(topic['types'])}." + ("" if deployed_together else " The endpoints are not proven to run together."), topic["evidence"], 0.96 if deployed_together else 0.72, topic=topic["name"], _remediation_context={"interface_types": topic["types"]}))
         if not topic["publishers"] or not topic["subscribers"]:
             missing_side = "publisher" if not topic["publishers"] else "subscriber"
             diagnostics.append(diagnostic("RD202", "info", "Orphan topic endpoint", f"Topic '{topic['name']}' has no statically detected {missing_side}. Runtime or external nodes may provide it.", topic["evidence"], 0.62, topic=topic["name"]))
@@ -2420,6 +2619,7 @@ def run_diagnostics(
                         interface["evidence"],
                         0.96 if deployed_together else 0.72,
                         interface=interface["name"],
+                        _remediation_context={"interface_types": interface["types"]},
                     )
                 )
             if not interface[server_key] or not interface[client_key]:
@@ -2440,7 +2640,7 @@ def run_diagnostics(
     for launch_file in data["launch_graph"]["files"]:
         for include in launch_file["includes"]:
             if include.get("resolved") and include.get("exists") is False:
-                diagnostics.append(diagnostic("RD301", "error", "Broken launch include", f"Launch include '{include.get('target')}' does not resolve to a file in the repository.", include["evidence"], 0.94, launch_file=launch_file["file"]))
+                diagnostics.append(diagnostic("RD301", "error", "Broken launch include", f"Launch include '{include.get('target')}' does not resolve to a file in the repository.", include["evidence"], 0.94, launch_file=launch_file["file"], package=launch_file["package"]))
         for action in launch_file["actions"]:
             for parameter in action.get("parameters", []):
                 if parameter.get("kind") == "file" and parameter.get("resolved"):
@@ -2454,11 +2654,11 @@ def run_diagnostics(
                     parameter["resolved_path"] = resolved
                     parameter["exists"] = exists
                     if exists is False:
-                        diagnostics.append(diagnostic("RD302", "error", "Missing launch parameter file", f"Parameter file '{parameter.get('value')}' does not exist.", action["evidence"], 0.94, launch_file=launch_file["file"]))
+                        diagnostics.append(diagnostic("RD302", "error", "Missing launch parameter file", f"Parameter file '{parameter.get('value')}' does not exist.", action["evidence"], 0.94, launch_file=launch_file["file"], package=launch_file["package"]))
             package_name = action.get("package")
             executable = action.get("executable")
             if action.get("kind") == "node" and package_name in local_executables and executable and action.get("resolved") and local_executables[package_name] and executable not in local_executables[package_name]:
-                diagnostics.append(diagnostic("RD303", "warning", "Unknown local launch executable", f"Launch file references {package_name}/{executable}, but that executable was not found in the package build metadata.", action["evidence"], 0.78, launch_file=launch_file["file"]))
+                diagnostics.append(diagnostic("RD303", "warning", "Unknown local launch executable", f"Launch file references {package_name}/{executable}, but that executable was not found in the package build metadata.", action["evidence"], 0.78, launch_file=launch_file["file"], package=package_name, executable=executable))
     parent_by_model_child: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
     for transform in data["architecture"]["tf"]["transforms"]:
         if any(token in transform.get(field, "") for field in ("parent", "child") for token in ("${", "$(")):
@@ -2517,14 +2717,110 @@ def scan_repository(
     cancel_check: CancelCheck | None = None,
 ) -> dict[str, Any]:
     root = root.resolve()
+    started_at = datetime.now(timezone.utc)
+    started = time.perf_counter()
     selected_config = config or load_scan_config(repository=root)
     selected_config.validate()
     session = ScanSession(root=root, config=selected_config, progress=progress, cancel_check=cancel_check)
     token = _ACTIVE_SCAN_SESSION.set(session)
     try:
-        return _scan_repository(root)
+        data = _scan_repository(root)
+        completed_at = datetime.now(timezone.utc)
+        data["provenance"] = {
+            "started_at": started_at.isoformat().replace("+00:00", "Z"),
+            "completed_at": completed_at.isoformat().replace("+00:00", "Z"),
+            "duration_seconds": round(time.perf_counter() - started, 6),
+            "git": git_provenance(root),
+            "input": {
+                "source_type": "local",
+                "archive_sha256": None,
+                "content_sha256": None,
+            },
+            "ros_distribution": os.environ.get("ROS_DISTRO"),
+            "environment": {
+                "python_version": platform.python_version(),
+                "platform": platform.system(),
+                "platform_release": platform.release(),
+                "architecture": platform.machine(),
+            },
+        }
+        return data
     finally:
         _ACTIVE_SCAN_SESSION.reset(token)
+
+
+def git_command(root: Path, *arguments: str, allow_empty: bool = False) -> str | None:
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "GIT_CONFIG_COUNT": "0",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_PAGER": "cat",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+    )
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "--no-pager",
+                "-c",
+                f"core.hooksPath={os.devnull}",
+                "-c",
+                "core.fsmonitor=false",
+                "-c",
+                "core.untrackedCache=false",
+                "-C",
+                str(root),
+                *arguments,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+            env=environment,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and (value or allow_empty) else None
+
+
+def git_supports_safe_fsmonitor_disable() -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+            env={**os.environ, "GIT_CONFIG_COUNT": "0", "GIT_CONFIG_NOSYSTEM": "1"},
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    match = re.search(r"\b(\d+)\.(\d+)(?:\.(\d+))?\b", result.stdout)
+    return bool(result.returncode == 0 and match and (int(match.group(1)), int(match.group(2))) >= (2, 36))
+
+
+def git_provenance(root: Path) -> dict[str, Any]:
+    commit_sha = git_command(root, "rev-parse", "HEAD")
+    if commit_sha is None:
+        return {"commit_sha": None, "branch": None, "dirty": None}
+    branch = git_command(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    if not git_supports_safe_fsmonitor_disable():
+        return {"commit_sha": commit_sha, "branch": branch, "dirty": None}
+    status = git_command(
+        root,
+        "status",
+        "--porcelain",
+        "--untracked-files=normal",
+        "--ignore-submodules=all",
+        allow_empty=True,
+    )
+    return {"commit_sha": commit_sha, "branch": branch, "dirty": None if status is None else bool(status)}
 
 
 def load_scan_config_for_input(path: Path | None, repository: Path, source_type: str) -> ScanConfig:
@@ -2718,6 +3014,12 @@ def entity_label(entity: dict[str, Any]) -> str:
 def print_text_report(data: dict[str, Any], *, resolved_only: bool = False) -> None:
     print(f"Repository: {data['repository']['path']}")
     print(f"Schema: {data['schema_version']}  Scanner: {data['scanner']['version']} ({data['scanner']['mode']})")
+    provenance = data.get("provenance") or {}
+    git = provenance.get("git") or {}
+    print(
+        f"Scanned: {provenance.get('completed_at') or 'unknown'} in {provenance.get('duration_seconds', 0):.3f}s; "
+        f"Git: {git.get('commit_sha') or 'not detected'}"
+    )
     print(f"Packages: {data['package_count']}")
     print(
         f"Entities: {data['summary']['resolved_entities']} resolved, "
@@ -2746,6 +3048,9 @@ def print_text_report(data: dict[str, Any], *, resolved_only: bool = False) -> N
         print("\nDiagnostics:")
         for item in data["diagnostics"]:
             print(f"  - {item['severity'].upper()} {item['code']}: {item['message']} (confidence={item['confidence']:.2f})")
+            print(f"    Repair: {item['remediation']['summary']}")
+            for command in item["remediation"]["commands"]:
+                print(f"    Command: {command}")
     print("\nLimitations:")
     for limitation in data["limitations"]:
         print(f"  - {limitation}")
@@ -2753,7 +3058,7 @@ def print_text_report(data: dict[str, Any], *, resolved_only: bool = False) -> N
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Statically discover and diagnose a ROS 2 repository or workspace.")
-    parser.add_argument("repository", nargs="?", default=".", help="Repository/workspace path or public HTTPS Git URL")
+    parser.add_argument("repository", nargs="?", default=".", help="Repository/workspace path or HTTPS Git URL")
     parser.add_argument("--json", action="store_true", help="Emit the stable JSON schema instead of text")
     parser.add_argument("--output", "-o", help="Write output to a file")
     parser.add_argument("--config", type=Path, help="JSON configuration file; local scans default to <repository>/.robot-doctor.json")
@@ -2765,6 +3070,7 @@ def main() -> int:
     parser.add_argument("--max-files", type=int, help="Maximum number of scan-candidate files to select and read")
     parser.add_argument("--max-repository-entries", type=int, help="Maximum files and directories to enumerate")
     parser.add_argument("--max-checkout-size-mb", type=float, help="Maximum HTTPS Git checkout size in MiB")
+    parser.add_argument("--git-token-env", metavar="ENV_VAR", help="Read a private-repository access token from this environment variable")
     parser.add_argument("--progress", action="store_true", help="Report progress to stderr")
     parser.add_argument("--resolved-only", action="store_true", help="Hide unresolved entities in text output")
     args = parser.parse_args()
@@ -2794,9 +3100,15 @@ def main() -> int:
     from .intake import IntakeError, materialize_repository
 
     try:
+        access_token = None
+        if args.git_token_env:
+            access_token = os.environ.get(args.git_token_env)
+            if not access_token:
+                parser.error(f"environment variable {args.git_token_env!r} is not set or is empty")
         with materialize_repository(
             args.repository,
             max_checkout_bytes=int(args.max_checkout_size_mb * 1024 * 1024) if args.max_checkout_size_mb is not None else None,
+            access_token=access_token,
         ) as repository_input:
             selected_config = load_scan_config_for_input(
                 args.config,
@@ -2813,6 +3125,7 @@ def main() -> int:
             )
             data = scan_repository(repository_input.path, config=selected_config, progress=progress)
             data["repository"].update(source=repository_input.source, source_type=repository_input.source_type)
+            data["provenance"]["input"]["source_type"] = repository_input.source_type
     except (ConfigError, IntakeError) as exc:
         parser.error(str(exc))
     except ScanCancelled:

@@ -10,14 +10,25 @@ Robot Doctor statically inventories and diagnoses ROS 2 source repositories with
 - Inventories Python executables from `setup.py`, `setup.cfg`, and `pyproject.toml` entry points.
 - Builds launch graphs from Python, XML, and YAML launch files, including local includes, arguments, conditions, namespaces, remappings, parameter sources, and composed nodes.
 - Builds node-level communication graphs with launch namespaces/remappings and typed parameter override precedence.
-- Separates detected facts, inferred architecture, and diagnostics. Every finding includes evidence and a confidence score.
+- Separates detected facts, inferred architecture, and diagnostics. Every finding includes evidence, confidence, concrete repair steps, verification commands, suggested files, and an optional patch hint.
 - Checks likely missing dependencies, topic/service/action type mismatches, orphan endpoints, QoS incompatibilities, broken launch references, missing parameter files, CMake install gaps, and invalid TF parentage/cycles.
 - Skips unreadable, oversized, or excess source files with explicit diagnostics instead of aborting the scan.
 - Supports progress callbacks, cancellation, diagnostic suppression, severity overrides, and dependency-noise controls.
-- Accepts local folders or public HTTPS Git URLs from the CLI and provides a local browser interface for Git URLs and ZIP uploads.
+- Accepts local folders and public or token-authenticated HTTPS Git URLs from the CLI, with a local browser interface for Git URLs and hardened ZIP uploads.
 - Generates basic, intermediate, and expert Markdown overviews with Mermaid diagrams.
+- Records scan timestamps, duration, Git revision/branch/dirty state, input type, archive/content SHA-256, ROS distribution, Python version, and platform metadata.
 
-## Installation
+## One-Command Docker Start
+
+The external-pilot path requires Docker Desktop, but does not require Python, pip, ROS, `colcon`, or Terminal commands.
+
+- On macOS, double-click `start_robot_doctor.command`, then use the browser page it opens.
+- On any Docker Compose system, run `docker compose up --build` and open `http://127.0.0.1:8765`.
+- Double-click `stop_robot_doctor.command` on macOS, or run `docker compose down`, to stop it.
+
+The container publishes only to host loopback, runs with no Linux capabilities, uses a read-only filesystem plus temporary scan storage, and keeps the same local-only security boundary as the Python launcher.
+
+## Python Installation
 
 Python 3.10 or newer is sufficient. ROS and `colcon` are not required for static analysis; Python 3.10 uses `tomli` for modern packaging metadata.
 
@@ -41,13 +52,22 @@ Start the local interface and press the scan button:
 robot-doctor-web
 ```
 
-The page accepts either a public `https://` Git repository URL or a ZIP upload. Scans run as background tasks with progress, cancellation, JSON download, and basic/intermediate/expert Markdown reports. The beta server refuses non-loopback hosts, validates Host and Origin headers, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
+The page accepts a public or private `https://` Git repository URL, with an optional read-only access token, or a ZIP upload. Token and diagnostic-noise controls are grouped under **Advanced options**. Tokens are supplied to the clone process through ephemeral environment configuration and are not stored in tasks or reports. Scans run as background tasks with progress and cancellation. Completed scans render prioritized diagnostics, repair guidance, severity/package filters, a node-to-interface topology, architecture tables, and provenance directly in HTML, with JSON and basic/intermediate/expert Markdown downloads. Informational findings are collapsed by default. The beta server validates loopback Host and Origin headers, accepts the opaque `Origin: null` value used by the local in-app browser only when the Host remains loopback, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
 
 The CLI also accepts Git directly:
 
 ```bash
 robot-doctor-scan https://github.com/ros2/examples.git --json --output examples.json --progress
 ```
+
+For a private GitHub repository, create a fine-grained read-only token and pass only its environment-variable name:
+
+```bash
+export ROBOT_DOCTOR_GIT_TOKEN='your-read-only-token'
+robot-doctor-scan https://github.com/owner/private-repository.git --git-token-env ROBOT_DOCTOR_GIT_TOKEN --json --output scan.json
+```
+
+The token is never accepted inside the URL or as a literal CLI argument, reducing shell-history and process-list exposure.
 
 The scripts also run directly without installation:
 
@@ -60,13 +80,14 @@ python3 tools/robot_doctor_web.py
 
 ## Output Contract
 
-JSON output uses schema version `1.2.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. The top-level sections are:
+JSON output uses schema version `1.3.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. The top-level sections are:
 
 - `packages`: source-backed package and entity inventories.
 - `configuration`: effective limits, diagnostic policy, and suppressed-diagnostic count.
 - `launch_graph`: launch files, actions, includes, and include edges.
 - `architecture`: source and launched nodes, resolved topic/service/action graphs, effective node parameters, TF/URDF data, inferred sensors, algorithms, actuation, and modification points.
-- `diagnostics`: checks with stable codes, severity, evidence, and confidence.
+- `diagnostics`: checks with stable codes, severity, evidence, confidence, repair steps, verification commands, suggested files, and patch hints.
+- `provenance`: timestamps, duration, Git state, input type, ZIP archive/content SHA-256 when applicable, ROS distribution, Python version, and operating-system metadata needed to reproduce a scan.
 - `limitations`: explicit boundaries of static analysis.
 
 An unresolved name is retained as an expression with `resolved: false`; it is not silently converted to an empty authoritative-looking fact.
@@ -134,4 +155,4 @@ The current root license is proprietary and all rights are reserved. This conser
 
 Robot Doctor does not claim runtime certainty. Dynamic names, substitutions, external packages, plugin loading, runtime TF, and actual DDS QoS negotiation require a built or running system for confirmation. Type mismatches are errors only when endpoints are proven to share a node or launch deployment; otherwise they remain lower-confidence warnings. An optional live ROS graph comparison remains a later phase because it requires a sourced ROS installation and a running robot or simulation.
 
-Git URL intake currently rejects literal local/private addresses but does not pin resolved DNS addresses or independently validate every redirect destination. This is acceptable only inside the documented loopback beta boundary; complete `SECURITY.md` hosted-service controls before deployment beyond one trusted local user.
+ZIP intake rejects every `.git` path component, including case and trailing-space variants, before extraction. Git provenance collection also ignores global/system configuration and disables repository hooks, `core.fsmonitor`, and the untracked cache. Git URL intake currently rejects literal local/private addresses but does not pin resolved DNS addresses or independently validate every redirect destination. Private-repository tokens are appropriate only for the documented local workflow and should be read-only and short-lived. This is acceptable only inside the documented loopback beta boundary; complete `SECURITY.md` hosted-service controls before deployment beyond one trusted local user.

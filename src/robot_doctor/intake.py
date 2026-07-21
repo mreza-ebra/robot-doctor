@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import ipaddress
 import os
 import shutil
@@ -11,12 +13,14 @@ import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Callable, Iterator
 from urllib.parse import urlparse
 
 from .scanner import ScanCancelled
 
 DEFAULT_MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024
+FORBIDDEN_ARCHIVE_COMPONENTS = {".git"}
 
 
 class IntakeError(ValueError):
@@ -74,6 +78,46 @@ def directory_size_exceeds(root: Path, max_bytes: int) -> tuple[bool, int]:
     return False, total_bytes
 
 
+def repository_content_sha256(root: Path) -> str:
+    files: list[Path] = []
+    directories = [root]
+    while directories:
+        directory = directories.pop()
+        try:
+            entries = os.scandir(directory)
+        except OSError as exc:
+            raise IntakeError(f"cannot hash extracted repository content: {exc}") from exc
+        with entries:
+            for entry in entries:
+                try:
+                    if entry.is_symlink():
+                        continue
+                    path = Path(entry.path)
+                    if entry.is_dir(follow_symlinks=False):
+                        directories.append(path)
+                    elif entry.is_file(follow_symlinks=False):
+                        files.append(path)
+                except OSError as exc:
+                    raise IntakeError(f"cannot hash extracted repository entry {entry.name!r}: {exc}") from exc
+    digest = hashlib.sha256()
+    for path in sorted(files, key=lambda item: item.relative_to(root).as_posix()):
+        relative_path = path.relative_to(root).as_posix().encode("utf-8", errors="surrogateescape")
+        try:
+            size = path.stat().st_size
+            source = path.open("rb")
+        except OSError as exc:
+            raise IntakeError(f"cannot hash extracted repository file {path}: {exc}") from exc
+        digest.update(b"file\0")
+        digest.update(relative_path)
+        digest.update(b"\0")
+        digest.update(str(size).encode("ascii"))
+        digest.update(b"\0")
+        with source:
+            while chunk := source.read(1024 * 1024):
+                digest.update(chunk)
+    return digest.hexdigest()
+
+
 def stop_process(process: subprocess.Popen[str]) -> None:
     if process.poll() is not None:
         return
@@ -95,17 +139,37 @@ def clone_git_repository(
     cancel_check: Callable[[], bool] | None = None,
     timeout_seconds: int = 300,
     max_checkout_bytes: int = DEFAULT_MAX_CHECKOUT_BYTES,
+    access_token: str | None = None,
 ) -> Path:
-    validate_git_url(url)
+    validated_url = validate_git_url(url)
     if max_checkout_bytes <= 0:
         raise IntakeError("Git checkout size limit must be positive")
+    if access_token is not None and (not access_token.strip() or "\n" in access_token or "\r" in access_token):
+        raise IntakeError("Git access token must be non-empty and contain no line breaks")
     destination.parent.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    if access_token:
+        hostname = (urlparse(validated_url).hostname or "").lower()
+        if hostname in {"github.com", "www.github.com"}:
+            encoded = base64.b64encode(f"x-access-token:{access_token}".encode("utf-8")).decode("ascii")
+            authorization = f"AUTHORIZATION: basic {encoded}"
+        else:
+            authorization = f"AUTHORIZATION: Bearer {access_token}"
+        environment.update(
+            {
+                "GIT_CONFIG_COUNT": "1",
+                "GIT_CONFIG_KEY_0": "http.extraHeader",
+                "GIT_CONFIG_VALUE_0": authorization,
+            }
+        )
     with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as error_log:
         process = subprocess.Popen(
-            ["git", "clone", "--depth", "1", "--filter=blob:none", "--single-branch", "--", url, str(destination)],
+            ["git", "clone", "--depth", "1", "--filter=blob:none", "--single-branch", "--", validated_url, str(destination)],
             stdout=subprocess.DEVNULL,
             stderr=error_log,
             text=True,
+            env=environment,
         )
         started = time.monotonic()
         last_size_check = 0.0
@@ -158,10 +222,13 @@ def extract_zip_upload(
             raise IntakeError(f"ZIP archive expands beyond {max_uncompressed_bytes} bytes")
         destination_resolved = destination.resolve()
         for item in entries:
+            archive_path = PurePosixPath(item.filename.replace("\\", "/"))
+            if any(part.casefold().rstrip(" .") in FORBIDDEN_ARCHIVE_COMPONENTS for part in archive_path.parts):
+                raise IntakeError(f"ZIP archive contains forbidden Git metadata: {item.filename}")
             mode = item.external_attr >> 16
             if stat.S_ISLNK(mode):
                 raise IntakeError(f"ZIP archive contains a symbolic link: {item.filename}")
-            target = (destination / item.filename).resolve()
+            target = (destination / Path(*archive_path.parts)).resolve()
             try:
                 target.relative_to(destination_resolved)
             except ValueError as exc:
@@ -182,6 +249,7 @@ def materialize_repository(
     *,
     cancel_check: Callable[[], bool] | None = None,
     max_checkout_bytes: int | None = None,
+    access_token: str | None = None,
 ) -> Iterator[RepositoryInput]:
     local = Path(source).expanduser()
     if local.exists():
@@ -197,5 +265,6 @@ def materialize_repository(
             Path(directory) / "repository",
             cancel_check=cancel_check,
             max_checkout_bytes=DEFAULT_MAX_CHECKOUT_BYTES if max_checkout_bytes is None else max_checkout_bytes,
+            access_token=access_token,
         )
         yield RepositoryInput(checkout, source, "git")
