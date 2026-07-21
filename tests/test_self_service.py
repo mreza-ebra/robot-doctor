@@ -7,6 +7,7 @@ import json
 import socket
 import sys
 import tempfile
+import threading
 import unittest
 import zipfile
 from pathlib import Path
@@ -20,7 +21,7 @@ if str(SOURCE_ROOT) not in sys.path:
 from robot_doctor.config import ScanConfig
 from robot_doctor import web as web_module
 from robot_doctor.intake import IntakeError, clone_git_repository, curlopt_resolve_value, directory_size_exceeds, extract_zip_upload, git_supports_pinned_https, resolve_public_git_host, validate_git_url
-from robot_doctor.scanner import scan_repository
+from robot_doctor.scanner import ScanCancelled, scan_repository
 from robot_doctor.web import WebApplication, allowed_bind_host, architecture_visual, home_page, is_loopback_host, result_body, task_page, valid_loopback_host_header, valid_origin
 
 
@@ -63,6 +64,51 @@ class SelfServiceTests(unittest.TestCase):
             return_value=mock.Mock(returncode=0, stdout="git version 2.37.0\n"),
         ):
             self.assertTrue(git_supports_pinned_https())
+
+    def test_git_dns_resolution_honors_clone_cancellation_and_timeout(self):
+        public_answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("185.199.108.153", 443))]
+        started = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+
+        def slow_lookup(*args, **kwargs):
+            started.set()
+            release.wait(timeout=2)
+            finished.set()
+            return public_answers
+
+        try:
+            with (
+                tempfile.TemporaryDirectory() as directory,
+                mock.patch("robot_doctor.intake.git_supports_pinned_https", return_value=True),
+                mock.patch("robot_doctor.intake.socket.getaddrinfo", side_effect=slow_lookup),
+            ):
+                with self.assertRaisesRegex(ScanCancelled, "DNS resolution cancelled"):
+                    clone_git_repository(
+                        "https://github.example/repository.git",
+                        Path(directory) / "repository",
+                        cancel_check=started.is_set,
+                        dns_timeout_seconds=1,
+                    )
+        finally:
+            release.set()
+        self.assertTrue(finished.wait(timeout=1))
+
+        timeout_release = threading.Event()
+
+        def timed_out_lookup(*args, **kwargs):
+            timeout_release.wait(timeout=2)
+            return public_answers
+
+        try:
+            with mock.patch("robot_doctor.intake.socket.getaddrinfo", side_effect=timed_out_lookup):
+                with self.assertRaisesRegex(IntakeError, "DNS resolution exceeded"):
+                    resolve_public_git_host(
+                        "https://github.example/repository.git",
+                        timeout_seconds=0.05,
+                    )
+        finally:
+            timeout_release.set()
 
     def test_zip_extraction_blocks_path_traversal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -264,6 +310,11 @@ class SelfServiceTests(unittest.TestCase):
         self.assertIn("ROBOT_DOCTOR_CONTAINER=1", dockerfile)
         self.assertIn("USER 10001:10001", dockerfile)
         self.assertIn('test "$(id -u)" = "10001"', workflow)
+        self.assertIn("actions/checkout@v6", workflow)
+        self.assertIn("actions/setup-python@v6", workflow)
+        self.assertNotIn("actions/checkout@v4", workflow)
+        self.assertNotIn("actions/setup-python@v5", workflow)
+        self.assertIn("python tests/run_live_git_intake.py", workflow)
         self.assertIn("docker compose up --build -d", launcher)
         self.assertIn("include compose.yaml", manifest)
         self.assertIn("include start_robot_doctor.command", manifest)

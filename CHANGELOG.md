@@ -27,9 +27,11 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Local browser submissions accept an opaque `Origin: null` only with a validated loopback Host and CSRF token.
 - The Docker image and Compose service run as fixed unprivileged UID/GID `10001:10001`, with CI rejecting root execution.
 - HTTPS Git intake rejects non-public DNS answers, pins Git/libcurl to validated addresses, disables redirects and proxies, and disallows file/external-helper transports.
+- DNS resolution has bounded concurrency, a hard timeout, cancellation polling, and a live end-to-end GitHub clone in CI.
+- GitHub Actions use Node.js 24-compatible `actions/checkout@v6` and `actions/setup-python@v6` releases.
 
 ### Known Limits
 
 - Static analysis cannot confirm dynamic runtime graph behavior, actual DDS QoS negotiation, runtime TF, or plugin loading.
 - Web results are temporary and disappear when the local application exits.
-- Git intake is local-beta only; hosted deployment additionally requires DNS/redirect destination hardening and service-level authentication and quotas.
+- Git intake is local-beta only; hosted deployment additionally requires independent network egress enforcement plus service-level authentication, authorization, isolation, quotas, and retention controls.

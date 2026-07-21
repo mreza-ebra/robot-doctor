@@ -52,7 +52,7 @@ Start the local interface and press the scan button:
 robot-doctor-web
 ```
 
-The page accepts a public or private `https://` Git repository URL, with an optional read-only access token, or a ZIP upload. Token and diagnostic-noise controls are grouped under **Advanced options**. Before cloning, Robot Doctor resolves the Git hostname, rejects the entire lookup if any address is non-public, pins Git/libcurl to the accepted addresses, disables proxies and HTTP redirects, and ignores global/system Git configuration. Tokens are supplied to the clone process through ephemeral environment configuration and are not stored in tasks or reports; keep them repository-scoped, read-only, and short-lived. Scans run as background tasks with progress and cancellation. Completed scans render prioritized diagnostics, repair guidance, severity/package filters, a node-to-interface topology, architecture tables, and provenance directly in HTML, with JSON and basic/intermediate/expert Markdown downloads. Informational findings are collapsed by default. The beta server validates loopback Host and Origin headers, accepts the opaque `Origin: null` value used by the local in-app browser only when the Host remains loopback, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
+The page accepts a public or private `https://` Git repository URL, with an optional read-only access token, or a ZIP upload. Token and diagnostic-noise controls are grouped under **Advanced options**. Before cloning, Robot Doctor resolves the Git hostname through a bounded resolver pool with a ten-second deadline and scan cancellation, rejects the entire lookup if any address is non-public, pins Git/libcurl to the accepted addresses, disables proxies and HTTP redirects, and ignores global/system Git configuration. Tokens are supplied to the clone process through ephemeral environment configuration and are not stored in tasks or reports; keep them repository-scoped, read-only, and short-lived. Scans run as background tasks with progress and cancellation. Completed scans render prioritized diagnostics, repair guidance, severity/package filters, a node-to-interface topology, architecture tables, and provenance directly in HTML, with JSON and basic/intermediate/expert Markdown downloads. Informational findings are collapsed by default. The beta server validates loopback Host and Origin headers, accepts the opaque `Origin: null` value used by the local in-app browser only when the Host remains loopback, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
 
 The CLI also accepts Git directly:
 
@@ -104,7 +104,7 @@ robot-doctor-scan my_robot --dependency-mode direct --suppress RD202 --severity 
 - `dependency_mode=all` restores strict warning behavior; `off` disables dependency suggestions.
 - `suppress_diagnostics`, `severity_overrides`, dependency ignore patterns, and minimum confidence provide repository-specific feedback controls.
 - `max_file_size_bytes`, `max_total_size_bytes`, `max_files`, and `max_repository_entries` bound reads and streaming traversal. Skips or truncation are reported as `RD004`, `RD005`, `RD007`, `RD009`, or `RD010`.
-- HTTPS Git intake requires Git 2.37 or newer for pinned hostname resolution, disables redirects, and has a one-GiB checkout cap by default. Override the cap explicitly with `--max-checkout-size-mb`; the local web administrator can also set `--max-concurrent-tasks`.
+- HTTPS Git intake requires Git 2.37 or newer for pinned hostname resolution, gives DNS ten seconds by default, honors scan cancellation during lookup, disables redirects, and has a one-GiB checkout cap. Override the checkout cap explicitly with `--max-checkout-size-mb`; the local web administrator can also set `--max-concurrent-tasks`.
 
 The measured warning reduction and unresolved-entity policy are documented in `docs/noise_calibration.md`.
 
@@ -131,6 +131,12 @@ Run the real-repository gate after placing the pinned checkouts at their manifes
 
 ```bash
 python3 tests/run_real_repository_regressions.py --require-all
+```
+
+CI additionally runs the real network intake path without DNS or subprocess mocks:
+
+```bash
+python3 tests/run_live_git_intake.py
 ```
 
 Build and verify a distributable wheel:

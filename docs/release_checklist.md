@@ -17,17 +17,19 @@
 - [x] Malicious ZIP `.git/config` and Git `core.fsmonitor` execution regressions pass.
 - [x] Local in-app browser upload, topology, filters, and provenance hashes pass end to end.
 - [x] Docker image declares fixed non-root UID/GID `10001:10001`; local tests enforce the image and Compose configuration.
+- [x] DNS lookup timeout and cancellation regressions pass locally.
+- [x] A real DNS-pinned HTTPS clone passes locally; CI has a dedicated live-intake job for the next run.
 - [ ] Verify the final macOS launcher manually in current Safari and Chrome builds.
 
 ## Publication
 
 - [x] Configure the official public Git remote: `https://github.com/mreza-ebra/robot-doctor.git`.
-- [x] Push commit `5e232d3` to `origin/main`.
-- [x] GitHub Actions run `29859856382` succeeds for commit `5e232d3`.
-- [x] The container build and live health-check job succeeds in run `29859856382`.
-- [ ] Push the non-root and DNS-pinning hardening, then confirm its GitHub Actions run succeeds.
+- [x] Push commit `3502e8b` to `origin/main`.
+- [x] GitHub Actions run `29861027447` succeeds for commit `3502e8b`.
+- [x] The non-root container build and live health-check job succeeds in run `29861027447`.
+- [ ] Push the DNS-cancellation, live-intake, and Node.js 24 action follow-up, then confirm its GitHub Actions run succeeds without deprecation warnings.
 - [ ] Create and push annotated tag `v0.5.0` only after remote CI is green.
 - [ ] Publish release artifacts generated from that tag.
 - [ ] Enable private vulnerability reporting on the official repository.
 
-GitHub Actions run `29859856382` completed successfully on 2026-07-21 for commit `5e232d3`; unit, package, real-repository, accuracy, generated-artifact, container-build, and live health-check jobs all passed. Remaining release work is the current hardening run, Safari/Chrome launcher verification, tagging, release artifacts, and private vulnerability reporting.
+GitHub Actions run `29861027447` completed successfully on 2026-07-21 for commit `3502e8b`; unit, package, real-repository, accuracy, generated-artifact, non-root container-build, and live health-check jobs all passed. Remaining release work is the current follow-up CI run, Safari/Chrome launcher verification, tagging, release artifacts, and private vulnerability reporting.

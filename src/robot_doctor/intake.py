@@ -4,12 +4,14 @@ import base64
 import hashlib
 import ipaddress
 import os
+import queue
 import re
 import shutil
 import socket
 import stat
 import subprocess
 import tempfile
+import threading
 import time
 import zipfile
 from contextlib import contextmanager
@@ -22,8 +24,11 @@ from urllib.parse import urlparse
 from .scanner import ScanCancelled
 
 DEFAULT_MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024
+DEFAULT_DNS_TIMEOUT_SECONDS = 10.0
 FORBIDDEN_ARCHIVE_COMPONENTS = {".git"}
+MAX_CONCURRENT_DNS_LOOKUPS = 4
 MINIMUM_PINNED_GIT_VERSION = (2, 37)
+_DNS_LOOKUP_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_DNS_LOOKUPS)
 
 
 class IntakeError(ValueError):
@@ -80,14 +85,75 @@ def git_supports_pinned_https() -> bool:
     )
 
 
-def resolve_public_git_host(value: str) -> tuple[str, int, tuple[str, ...]]:
+def cancellable_getaddrinfo(
+    hostname: str,
+    port: int,
+    *,
+    cancel_check: Callable[[], bool] | None = None,
+    timeout_seconds: float = DEFAULT_DNS_TIMEOUT_SECONDS,
+) -> list[tuple[int, int, int, str, tuple[object, ...]]]:
+    if timeout_seconds <= 0:
+        raise IntakeError("Git DNS timeout must be positive")
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        if cancel_check and cancel_check():
+            raise ScanCancelled("repository DNS resolution cancelled")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise IntakeError(f"Git host DNS resolution exceeded the {timeout_seconds:g}-second timeout")
+        if _DNS_LOOKUP_SLOTS.acquire(timeout=min(0.1, remaining)):
+            break
+
+    outcomes: queue.Queue[tuple[list[tuple[int, int, int, str, tuple[object, ...]]] | None, Exception | None]] = queue.Queue(maxsize=1)
+
+    def resolve() -> None:
+        try:
+            answers = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+            outcomes.put((answers, None))
+        except Exception as exc:
+            outcomes.put((None, exc))
+        finally:
+            _DNS_LOOKUP_SLOTS.release()
+
+    resolver = threading.Thread(target=resolve, name="robot-doctor-dns", daemon=True)
+    try:
+        resolver.start()
+    except Exception:
+        _DNS_LOOKUP_SLOTS.release()
+        raise
+    while True:
+        if cancel_check and cancel_check():
+            raise ScanCancelled("repository DNS resolution cancelled")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise IntakeError(f"Git host DNS resolution exceeded the {timeout_seconds:g}-second timeout")
+        try:
+            answers, error = outcomes.get(timeout=min(0.1, remaining))
+        except queue.Empty:
+            continue
+        if error is not None:
+            raise IntakeError(f"Git host DNS resolution failed for {hostname}: {error}") from error
+        return answers or []
+
+
+def resolve_public_git_host(
+    value: str,
+    *,
+    cancel_check: Callable[[], bool] | None = None,
+    timeout_seconds: float = DEFAULT_DNS_TIMEOUT_SECONDS,
+) -> tuple[str, int, tuple[str, ...]]:
     parsed = urlparse(validate_git_url(value))
     hostname = parsed.hostname or ""
     try:
         port = parsed.port or 443
-        answers = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-    except (ValueError, OSError) as exc:
+    except ValueError as exc:
         raise IntakeError(f"Git host DNS resolution failed for {hostname}: {exc}") from exc
+    answers = cancellable_getaddrinfo(
+        hostname,
+        port,
+        cancel_check=cancel_check,
+        timeout_seconds=timeout_seconds,
+    )
     addresses: dict[str, ipaddress.IPv4Address | ipaddress.IPv6Address] = {}
     for answer in answers:
         raw_address = str(answer[4][0]).split("%", 1)[0]
@@ -199,6 +265,7 @@ def clone_git_repository(
     *,
     cancel_check: Callable[[], bool] | None = None,
     timeout_seconds: int = 300,
+    dns_timeout_seconds: float = DEFAULT_DNS_TIMEOUT_SECONDS,
     max_checkout_bytes: int = DEFAULT_MAX_CHECKOUT_BYTES,
     access_token: str | None = None,
 ) -> Path:
@@ -206,7 +273,11 @@ def clone_git_repository(
     if not git_supports_pinned_https():
         version = ".".join(str(value) for value in MINIMUM_PINNED_GIT_VERSION)
         raise IntakeError(f"Git {version} or newer is required for DNS-pinned HTTPS intake")
-    hostname, port, addresses = resolve_public_git_host(validated_url)
+    hostname, port, addresses = resolve_public_git_host(
+        validated_url,
+        cancel_check=cancel_check,
+        timeout_seconds=dns_timeout_seconds,
+    )
     if max_checkout_bytes <= 0:
         raise IntakeError("Git checkout size limit must be positive")
     if access_token is not None and (not access_token.strip() or "\n" in access_token or "\r" in access_token):

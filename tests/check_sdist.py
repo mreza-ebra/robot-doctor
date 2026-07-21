@@ -17,6 +17,7 @@ def main() -> int:
         "stop_robot_doctor.command",
         "schemas/robot_doctor_scan.schema.json",
         "src/robot_doctor/web.py",
+        "tests/run_live_git_intake.py",
     }
     with tarfile.open(args.sdist, "r:gz") as archive:
         names = {"/".join(Path(name).parts[1:]) for name in archive.getnames() if len(Path(name).parts) > 1}
