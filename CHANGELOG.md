@@ -27,7 +27,8 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Local browser submissions accept an opaque `Origin: null` only with a validated loopback Host and CSRF token.
 - The Docker image and Compose service run as fixed unprivileged UID/GID `10001:10001`, with CI rejecting root execution.
 - HTTPS Git intake rejects non-public DNS answers, pins Git/libcurl to validated addresses, disables redirects and proxies, and disallows file/external-helper transports.
-- DNS resolution has bounded concurrency, a hard timeout, cancellation polling, and a live end-to-end GitHub clone in CI.
+- DNS resolution uses isolated, terminable processes with a hard timeout and cancellation polling; CI exercises a live end-to-end GitHub clone.
+- Python 3.10.15 is the minimum supported interpreter so `ipaddress` includes corrected special-purpose address classification.
 - GitHub Actions use Node.js 24-compatible `actions/checkout@v6` and `actions/setup-python@v6` releases.
 
 ### Known Limits

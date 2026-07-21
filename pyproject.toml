@@ -7,7 +7,7 @@ name = "robot-doctor-static"
 version = "0.5.0"
 description = "Evidence-backed static inventory and diagnostics for ROS 2 repositories"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10.15"
 authors = [{name = "Robot Doctor contributors"}]
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]

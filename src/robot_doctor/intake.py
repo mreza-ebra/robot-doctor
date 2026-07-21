@@ -3,15 +3,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import ipaddress
+import json
 import os
-import queue
 import re
 import shutil
-import socket
 import stat
 import subprocess
+import sys
 import tempfile
-import threading
 import time
 import zipfile
 from contextlib import contextmanager
@@ -26,9 +25,18 @@ from .scanner import ScanCancelled
 DEFAULT_MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024
 DEFAULT_DNS_TIMEOUT_SECONDS = 10.0
 FORBIDDEN_ARCHIVE_COMPONENTS = {".git"}
-MAX_CONCURRENT_DNS_LOOKUPS = 4
 MINIMUM_PINNED_GIT_VERSION = (2, 37)
-_DNS_LOOKUP_SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT_DNS_LOOKUPS)
+_DNS_RESOLVER_PROGRAM = """
+import json
+import socket
+import sys
+
+addresses = sorted({
+    str(answer[4][0]).split("%", 1)[0]
+    for answer in socket.getaddrinfo(sys.argv[1], int(sys.argv[2]), type=socket.SOCK_STREAM)
+})
+print(json.dumps(addresses))
+"""
 
 
 class IntakeError(ValueError):
@@ -85,55 +93,61 @@ def git_supports_pinned_https() -> bool:
     )
 
 
-def cancellable_getaddrinfo(
+def stop_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        process.terminate()
+    except ProcessLookupError:
+        return
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
+
+
+def cancellable_resolve_addresses(
     hostname: str,
     port: int,
     *,
     cancel_check: Callable[[], bool] | None = None,
     timeout_seconds: float = DEFAULT_DNS_TIMEOUT_SECONDS,
-) -> list[tuple[int, int, int, str, tuple[object, ...]]]:
+) -> list[str]:
     if timeout_seconds <= 0:
         raise IntakeError("Git DNS timeout must be positive")
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        if cancel_check and cancel_check():
-            raise ScanCancelled("repository DNS resolution cancelled")
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise IntakeError(f"Git host DNS resolution exceeded the {timeout_seconds:g}-second timeout")
-        if _DNS_LOOKUP_SLOTS.acquire(timeout=min(0.1, remaining)):
-            break
-
-    outcomes: queue.Queue[tuple[list[tuple[int, int, int, str, tuple[object, ...]]] | None, Exception | None]] = queue.Queue(maxsize=1)
-
-    def resolve() -> None:
-        try:
-            answers = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
-            outcomes.put((answers, None))
-        except Exception as exc:
-            outcomes.put((None, exc))
-        finally:
-            _DNS_LOOKUP_SLOTS.release()
-
-    resolver = threading.Thread(target=resolve, name="robot-doctor-dns", daemon=True)
+    if cancel_check and cancel_check():
+        raise ScanCancelled("repository DNS resolution cancelled")
     try:
-        resolver.start()
-    except Exception:
-        _DNS_LOOKUP_SLOTS.release()
-        raise
-    while True:
+        process = subprocess.Popen(
+            [sys.executable, "-I", "-S", "-c", _DNS_RESOLVER_PROGRAM, hostname, str(port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise IntakeError(f"Git host DNS resolution could not start for {hostname}: {exc}") from exc
+    started = time.monotonic()
+    while process.poll() is None:
         if cancel_check and cancel_check():
+            stop_process(process)
             raise ScanCancelled("repository DNS resolution cancelled")
-        remaining = deadline - time.monotonic()
+        remaining = timeout_seconds - (time.monotonic() - started)
         if remaining <= 0:
+            stop_process(process)
             raise IntakeError(f"Git host DNS resolution exceeded the {timeout_seconds:g}-second timeout")
-        try:
-            answers, error = outcomes.get(timeout=min(0.1, remaining))
-        except queue.Empty:
-            continue
-        if error is not None:
-            raise IntakeError(f"Git host DNS resolution failed for {hostname}: {error}") from error
-        return answers or []
+        time.sleep(min(0.05, remaining))
+    stdout, stderr = process.communicate()
+    if process.returncode:
+        detail = " ".join(stderr.strip().split())[-500:]
+        raise IntakeError(f"Git host DNS resolution failed for {hostname}: {detail or 'unknown resolver error'}")
+    try:
+        addresses = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        raise IntakeError(f"Git host DNS resolution returned invalid output for {hostname}") from exc
+    if not isinstance(addresses, list) or any(not isinstance(address, str) for address in addresses):
+        raise IntakeError(f"Git host DNS resolution returned invalid output for {hostname}")
+    return addresses
 
 
 def resolve_public_git_host(
@@ -148,15 +162,14 @@ def resolve_public_git_host(
         port = parsed.port or 443
     except ValueError as exc:
         raise IntakeError(f"Git host DNS resolution failed for {hostname}: {exc}") from exc
-    answers = cancellable_getaddrinfo(
+    resolved_addresses = cancellable_resolve_addresses(
         hostname,
         port,
         cancel_check=cancel_check,
         timeout_seconds=timeout_seconds,
     )
     addresses: dict[str, ipaddress.IPv4Address | ipaddress.IPv6Address] = {}
-    for answer in answers:
-        raw_address = str(answer[4][0]).split("%", 1)[0]
+    for raw_address in resolved_addresses:
         try:
             address = ipaddress.ip_address(raw_address)
         except ValueError as exc:
@@ -243,20 +256,6 @@ def repository_content_sha256(root: Path) -> str:
             while chunk := source.read(1024 * 1024):
                 digest.update(chunk)
     return digest.hexdigest()
-
-
-def stop_process(process: subprocess.Popen[str]) -> None:
-    if process.poll() is not None:
-        return
-    try:
-        process.terminate()
-    except ProcessLookupError:
-        return
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
 
 
 def clone_git_repository(

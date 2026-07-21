@@ -4,10 +4,8 @@ import contextlib
 import hashlib
 import io
 import json
-import socket
 import sys
 import tempfile
-import threading
 import unittest
 import zipfile
 from pathlib import Path
@@ -20,7 +18,7 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from robot_doctor.config import ScanConfig
 from robot_doctor import web as web_module
-from robot_doctor.intake import IntakeError, clone_git_repository, curlopt_resolve_value, directory_size_exceeds, extract_zip_upload, git_supports_pinned_https, resolve_public_git_host, validate_git_url
+from robot_doctor.intake import IntakeError, cancellable_resolve_addresses, clone_git_repository, curlopt_resolve_value, directory_size_exceeds, extract_zip_upload, git_supports_pinned_https, resolve_public_git_host, validate_git_url
 from robot_doctor.scanner import ScanCancelled, scan_repository
 from robot_doctor.web import WebApplication, allowed_bind_host, architecture_visual, home_page, is_loopback_host, result_body, task_page, valid_loopback_host_header, valid_origin
 
@@ -33,11 +31,8 @@ class SelfServiceTests(unittest.TestCase):
                 validate_git_url(value)
 
     def test_git_dns_resolution_rejects_non_public_answers_and_pins_public_addresses(self):
-        public_answers = [
-            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:50c0:8000::154", 443, 0, 0)),
-            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("185.199.108.153", 443)),
-        ]
-        with mock.patch("robot_doctor.intake.socket.getaddrinfo", return_value=public_answers):
+        public_answers = ["2606:50c0:8000::154", "185.199.108.153"]
+        with mock.patch("robot_doctor.intake.cancellable_resolve_addresses", return_value=public_answers):
             hostname, port, addresses = resolve_public_git_host("https://github.example/repository.git")
 
         self.assertEqual(hostname, "github.example")
@@ -48,8 +43,8 @@ class SelfServiceTests(unittest.TestCase):
             "github.example:443:185.199.108.153,[2606:50c0:8000::154]",
         )
 
-        mixed_answers = public_answers + [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
-        with mock.patch("robot_doctor.intake.socket.getaddrinfo", return_value=mixed_answers):
+        mixed_answers = public_answers + ["127.0.0.1"]
+        with mock.patch("robot_doctor.intake.cancellable_resolve_addresses", return_value=mixed_answers):
             with self.assertRaisesRegex(IntakeError, "non-public address"):
                 resolve_public_git_host("https://github.example/repository.git")
 
@@ -65,50 +60,53 @@ class SelfServiceTests(unittest.TestCase):
         ):
             self.assertTrue(git_supports_pinned_https())
 
-    def test_git_dns_resolution_honors_clone_cancellation_and_timeout(self):
-        public_answers = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("185.199.108.153", 443))]
-        started = threading.Event()
-        release = threading.Event()
-        finished = threading.Event()
+    def test_git_dns_resolution_terminates_on_cancellation_and_timeout(self):
+        class HangingProcess:
+            returncode = None
 
-        def slow_lookup(*args, **kwargs):
-            started.set()
-            release.wait(timeout=2)
-            finished.set()
-            return public_answers
+            def __init__(self):
+                self.terminated = False
 
-        try:
-            with (
-                tempfile.TemporaryDirectory() as directory,
-                mock.patch("robot_doctor.intake.git_supports_pinned_https", return_value=True),
-                mock.patch("robot_doctor.intake.socket.getaddrinfo", side_effect=slow_lookup),
-            ):
-                with self.assertRaisesRegex(ScanCancelled, "DNS resolution cancelled"):
-                    clone_git_repository(
-                        "https://github.example/repository.git",
-                        Path(directory) / "repository",
-                        cancel_check=started.is_set,
-                        dns_timeout_seconds=1,
-                    )
-        finally:
-            release.set()
-        self.assertTrue(finished.wait(timeout=1))
+            def poll(self):
+                return self.returncode
 
-        timeout_release = threading.Event()
+            def terminate(self):
+                self.terminated = True
+                self.returncode = -15
 
-        def timed_out_lookup(*args, **kwargs):
-            timeout_release.wait(timeout=2)
-            return public_answers
+            def kill(self):
+                self.returncode = -9
 
-        try:
-            with mock.patch("robot_doctor.intake.socket.getaddrinfo", side_effect=timed_out_lookup):
-                with self.assertRaisesRegex(IntakeError, "DNS resolution exceeded"):
-                    resolve_public_git_host(
-                        "https://github.example/repository.git",
-                        timeout_seconds=0.05,
-                    )
-        finally:
-            timeout_release.set()
+            def wait(self, timeout=None):
+                return self.returncode
+
+        cancellation_process = HangingProcess()
+        cancellation_checks = iter((False, True))
+        with mock.patch("robot_doctor.intake.subprocess.Popen", return_value=cancellation_process):
+            with self.assertRaisesRegex(ScanCancelled, "DNS resolution cancelled"):
+                cancellable_resolve_addresses(
+                    "github.example",
+                    443,
+                    cancel_check=lambda: next(cancellation_checks, True),
+                )
+        self.assertTrue(cancellation_process.terminated)
+
+        timeout_process = HangingProcess()
+        with mock.patch("robot_doctor.intake.subprocess.Popen", return_value=timeout_process):
+            with self.assertRaisesRegex(IntakeError, "DNS resolution exceeded"):
+                cancellable_resolve_addresses("github.example", 443, timeout_seconds=0.01)
+        self.assertTrue(timeout_process.terminated)
+
+    def test_dns_resolver_isolated_process_output_and_python_floor(self):
+        process = mock.Mock(returncode=0)
+        process.poll.return_value = 0
+        process.communicate.return_value = ('["185.199.108.153"]\n', "")
+        with mock.patch("robot_doctor.intake.subprocess.Popen", return_value=process) as popen:
+            self.assertEqual(cancellable_resolve_addresses("github.example", 443), ["185.199.108.153"])
+        command = popen.call_args.args[0]
+        self.assertEqual(command[:4], [sys.executable, "-I", "-S", "-c"])
+        self.assertEqual(command[-2:], ["github.example", "443"])
+        self.assertIn('requires-python = ">=3.10.15"', (WORKSPACE / "pyproject.toml").read_text(encoding="utf-8"))
 
     def test_zip_extraction_blocks_path_traversal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -312,6 +310,7 @@ class SelfServiceTests(unittest.TestCase):
         self.assertIn('test "$(id -u)" = "10001"', workflow)
         self.assertIn("actions/checkout@v6", workflow)
         self.assertIn("actions/setup-python@v6", workflow)
+        self.assertIn('python-version: ["3.10.15", "3.13"]', workflow)
         self.assertNotIn("actions/checkout@v4", workflow)
         self.assertNotIn("actions/setup-python@v5", workflow)
         self.assertIn("python tests/run_live_git_intake.py", workflow)

@@ -30,7 +30,7 @@ The container publishes only to host loopback, runs as fixed unprivileged UID/GI
 
 ## Python Installation
 
-Python 3.10 or newer is sufficient. ROS and `colcon` are not required for static analysis; Python 3.10 uses `tomli` for modern packaging metadata.
+Python 3.10.15 or newer is required so security-sensitive IP address classification includes the Python 3.10 maintenance fixes. ROS and `colcon` are not required for static analysis; Python 3.10 uses `tomli` for modern packaging metadata.
 
 ```bash
 python3 -m pip install -e .
@@ -104,7 +104,7 @@ robot-doctor-scan my_robot --dependency-mode direct --suppress RD202 --severity 
 - `dependency_mode=all` restores strict warning behavior; `off` disables dependency suggestions.
 - `suppress_diagnostics`, `severity_overrides`, dependency ignore patterns, and minimum confidence provide repository-specific feedback controls.
 - `max_file_size_bytes`, `max_total_size_bytes`, `max_files`, and `max_repository_entries` bound reads and streaming traversal. Skips or truncation are reported as `RD004`, `RD005`, `RD007`, `RD009`, or `RD010`.
-- HTTPS Git intake requires Git 2.37 or newer for pinned hostname resolution, gives DNS ten seconds by default, honors scan cancellation during lookup, disables redirects, and has a one-GiB checkout cap. Override the checkout cap explicitly with `--max-checkout-size-mb`; the local web administrator can also set `--max-concurrent-tasks`.
+- HTTPS Git intake requires Git 2.37 or newer for pinned hostname resolution, gives DNS ten seconds by default, runs each lookup in an isolated process that is terminated on cancellation or timeout, disables redirects, and has a one-GiB checkout cap. Override the checkout cap explicitly with `--max-checkout-size-mb`; the local web administrator can also set `--max-concurrent-tasks`.
 
 The measured warning reduction and unresolved-entity policy are documented in `docs/noise_calibration.md`.
 

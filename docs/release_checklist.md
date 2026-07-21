@@ -17,8 +17,8 @@
 - [x] Malicious ZIP `.git/config` and Git `core.fsmonitor` execution regressions pass.
 - [x] Local in-app browser upload, topology, filters, and provenance hashes pass end to end.
 - [x] Docker image declares fixed non-root UID/GID `10001:10001`; local tests enforce the image and Compose configuration.
-- [x] DNS lookup timeout and cancellation regressions pass locally.
-- [x] A real DNS-pinned HTTPS clone passes locally; CI has a dedicated live-intake job for the next run.
+- [x] DNS lookup timeout and cancellation regressions pass locally, and timed-out resolver processes are terminated.
+- [x] A real DNS-pinned HTTPS clone passes locally and in the dedicated CI live-intake job.
 - [ ] Verify the final macOS launcher manually in current Safari and Chrome builds.
 
 ## Publication
@@ -27,9 +27,11 @@
 - [x] Push commit `3502e8b` to `origin/main`.
 - [x] GitHub Actions run `29861027447` succeeds for commit `3502e8b`.
 - [x] The non-root container build and live health-check job succeeds in run `29861027447`.
-- [ ] Push the DNS-cancellation, live-intake, and Node.js 24 action follow-up, then confirm its GitHub Actions run succeeds without deprecation warnings.
+- [x] Push DNS cancellation, live intake, and Node.js 24 action commit `ed290bc` to `origin/main`.
+- [x] GitHub Actions run `29862156154` succeeds for commit `ed290bc` without action runtime deprecation warnings.
+- [ ] Confirm the Python 3.10.15 floor and terminable DNS resolver follow-up passes remote CI before tagging.
 - [ ] Create and push annotated tag `v0.5.0` only after remote CI is green.
 - [ ] Publish release artifacts generated from that tag.
 - [ ] Enable private vulnerability reporting on the official repository.
 
-GitHub Actions run `29861027447` completed successfully on 2026-07-21 for commit `3502e8b`; unit, package, real-repository, accuracy, generated-artifact, non-root container-build, and live health-check jobs all passed. Remaining release work is the current follow-up CI run, Safari/Chrome launcher verification, tagging, release artifacts, and private vulnerability reporting.
+GitHub Actions run `29862156154` completed successfully on 2026-07-21 for commit `ed290bc`; unit, package, real-repository, accuracy, generated-artifact, live DNS-pinned Git intake, non-root container-build, and live health-check jobs all passed. Remaining release work is the Python/DNS follow-up CI run, Safari/Chrome launcher verification, tagging, release artifacts, and private vulnerability reporting.
