@@ -4,7 +4,9 @@ import base64
 import hashlib
 import ipaddress
 import os
+import re
 import shutil
+import socket
 import stat
 import subprocess
 import tempfile
@@ -21,6 +23,7 @@ from .scanner import ScanCancelled
 
 DEFAULT_MAX_CHECKOUT_BYTES = 1024 * 1024 * 1024
 FORBIDDEN_ARCHIVE_COMPONENTS = {".git"}
+MINIMUM_PINNED_GIT_VERSION = (2, 37)
 
 
 class IntakeError(ValueError):
@@ -50,6 +53,64 @@ def validate_git_url(value: str) -> str:
     if address and (address.is_private or address.is_loopback or address.is_link_local or address.is_reserved):
         raise IntakeError("private or local Git addresses are not accepted")
     return value
+
+
+def git_supports_pinned_https() -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=3,
+            env={
+                **os.environ,
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_CONFIG_SYSTEM": os.devnull,
+            },
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    match = re.search(r"\b(\d+)\.(\d+)(?:\.(\d+))?\b", result.stdout)
+    return bool(
+        result.returncode == 0
+        and match
+        and (int(match.group(1)), int(match.group(2))) >= MINIMUM_PINNED_GIT_VERSION
+    )
+
+
+def resolve_public_git_host(value: str) -> tuple[str, int, tuple[str, ...]]:
+    parsed = urlparse(validate_git_url(value))
+    hostname = parsed.hostname or ""
+    try:
+        port = parsed.port or 443
+        answers = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except (ValueError, OSError) as exc:
+        raise IntakeError(f"Git host DNS resolution failed for {hostname}: {exc}") from exc
+    addresses: dict[str, ipaddress.IPv4Address | ipaddress.IPv6Address] = {}
+    for answer in answers:
+        raw_address = str(answer[4][0]).split("%", 1)[0]
+        try:
+            address = ipaddress.ip_address(raw_address)
+        except ValueError as exc:
+            raise IntakeError(f"Git host resolved to an invalid address: {raw_address}") from exc
+        mapped = address.ipv4_mapped if isinstance(address, ipaddress.IPv6Address) else None
+        if not address.is_global or (mapped is not None and not mapped.is_global):
+            raise IntakeError(f"Git host resolved to a non-public address: {address}")
+        addresses[address.compressed] = address
+    if not addresses:
+        raise IntakeError(f"Git host DNS resolution returned no addresses for {hostname}")
+    ordered = tuple(
+        address.compressed
+        for address in sorted(addresses.values(), key=lambda item: (item.version, int(item)))
+    )
+    return hostname, port, ordered
+
+
+def curlopt_resolve_value(hostname: str, port: int, addresses: tuple[str, ...]) -> str:
+    formatted_addresses = ",".join(f"[{value}]" if ":" in value else value for value in addresses)
+    return f"{hostname}:{port}:{formatted_addresses}"
 
 
 def directory_size_exceeds(root: Path, max_bytes: int) -> tuple[bool, int]:
@@ -142,13 +203,35 @@ def clone_git_repository(
     access_token: str | None = None,
 ) -> Path:
     validated_url = validate_git_url(url)
+    if not git_supports_pinned_https():
+        version = ".".join(str(value) for value in MINIMUM_PINNED_GIT_VERSION)
+        raise IntakeError(f"Git {version} or newer is required for DNS-pinned HTTPS intake")
+    hostname, port, addresses = resolve_public_git_host(validated_url)
     if max_checkout_bytes <= 0:
         raise IntakeError("Git checkout size limit must be positive")
     if access_token is not None and (not access_token.strip() or "\n" in access_token or "\r" in access_token):
         raise IntakeError("Git access token must be non-empty and contain no line breaks")
     destination.parent.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
-    environment["GIT_TERMINAL_PROMPT"] = "0"
+    for variable in ("ALL_PROXY", "HTTP_PROXY", "HTTPS_PROXY", "all_proxy", "http_proxy", "https_proxy"):
+        environment.pop(variable, None)
+    environment.update(
+        {
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_TERMINAL_PROMPT": "0",
+            "NO_PROXY": "*",
+            "no_proxy": "*",
+        }
+    )
+    configuration = [
+        ("http.followRedirects", "false"),
+        ("http.curloptResolve", curlopt_resolve_value(hostname, port, addresses)),
+        ("http.proxy", ""),
+        ("protocol.file.allow", "never"),
+        ("protocol.ext.allow", "never"),
+    ]
     if access_token:
         hostname = (urlparse(validated_url).hostname or "").lower()
         if hostname in {"github.com", "www.github.com"}:
@@ -156,13 +239,11 @@ def clone_git_repository(
             authorization = f"AUTHORIZATION: basic {encoded}"
         else:
             authorization = f"AUTHORIZATION: Bearer {access_token}"
-        environment.update(
-            {
-                "GIT_CONFIG_COUNT": "1",
-                "GIT_CONFIG_KEY_0": "http.extraHeader",
-                "GIT_CONFIG_VALUE_0": authorization,
-            }
-        )
+        configuration.append(("http.extraHeader", authorization))
+    environment["GIT_CONFIG_COUNT"] = str(len(configuration))
+    for index, (key, config_value) in enumerate(configuration):
+        environment[f"GIT_CONFIG_KEY_{index}"] = key
+        environment[f"GIT_CONFIG_VALUE_{index}"] = config_value
     with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as error_log:
         process = subprocess.Popen(
             ["git", "clone", "--depth", "1", "--filter=blob:none", "--single-branch", "--", validated_url, str(destination)],

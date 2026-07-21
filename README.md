@@ -14,19 +14,19 @@ Robot Doctor statically inventories and diagnoses ROS 2 source repositories with
 - Checks likely missing dependencies, topic/service/action type mismatches, orphan endpoints, QoS incompatibilities, broken launch references, missing parameter files, CMake install gaps, and invalid TF parentage/cycles.
 - Skips unreadable, oversized, or excess source files with explicit diagnostics instead of aborting the scan.
 - Supports progress callbacks, cancellation, diagnostic suppression, severity overrides, and dependency-noise controls.
-- Accepts local folders and public or token-authenticated HTTPS Git URLs from the CLI, with a local browser interface for Git URLs and hardened ZIP uploads.
+- Accepts local folders and public or token-authenticated HTTPS Git URLs from the CLI, with DNS-pinned, redirect-disabled Git transport and hardened ZIP uploads in the local browser interface.
 - Generates basic, intermediate, and expert Markdown overviews with Mermaid diagrams.
 - Records scan timestamps, duration, Git revision/branch/dirty state, input type, archive/content SHA-256, ROS distribution, Python version, and platform metadata.
 
-## One-Command Docker Start
+## One-Command Docker Start (Docker Required)
 
-The external-pilot path requires Docker Desktop, but does not require Python, pip, ROS, `colcon`, or Terminal commands.
+The external-pilot path requires Docker Desktop. It removes the Python, pip, ROS, `colcon`, and Terminal setup, but it is not zero-install. A truly zero-install macOS experience still requires a separately distributed, signed, and notarized application bundle.
 
 - On macOS, double-click `start_robot_doctor.command`, then use the browser page it opens.
 - On any Docker Compose system, run `docker compose up --build` and open `http://127.0.0.1:8765`.
 - Double-click `stop_robot_doctor.command` on macOS, or run `docker compose down`, to stop it.
 
-The container publishes only to host loopback, runs with no Linux capabilities, uses a read-only filesystem plus temporary scan storage, and keeps the same local-only security boundary as the Python launcher.
+The container publishes only to host loopback, runs as fixed unprivileged UID/GID `10001:10001` with no Linux capabilities, uses a read-only filesystem plus temporary scan storage, and keeps the same local-only security boundary as the Python launcher.
 
 ## Python Installation
 
@@ -52,7 +52,7 @@ Start the local interface and press the scan button:
 robot-doctor-web
 ```
 
-The page accepts a public or private `https://` Git repository URL, with an optional read-only access token, or a ZIP upload. Token and diagnostic-noise controls are grouped under **Advanced options**. Tokens are supplied to the clone process through ephemeral environment configuration and are not stored in tasks or reports. Scans run as background tasks with progress and cancellation. Completed scans render prioritized diagnostics, repair guidance, severity/package filters, a node-to-interface topology, architecture tables, and provenance directly in HTML, with JSON and basic/intermediate/expert Markdown downloads. Informational findings are collapsed by default. The beta server validates loopback Host and Origin headers, accepts the opaque `Origin: null` value used by the local in-app browser only when the Host remains loopback, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
+The page accepts a public or private `https://` Git repository URL, with an optional read-only access token, or a ZIP upload. Token and diagnostic-noise controls are grouped under **Advanced options**. Before cloning, Robot Doctor resolves the Git hostname, rejects the entire lookup if any address is non-public, pins Git/libcurl to the accepted addresses, disables proxies and HTTP redirects, and ignores global/system Git configuration. Tokens are supplied to the clone process through ephemeral environment configuration and are not stored in tasks or reports; keep them repository-scoped, read-only, and short-lived. Scans run as background tasks with progress and cancellation. Completed scans render prioritized diagnostics, repair guidance, severity/package filters, a node-to-interface topology, architecture tables, and provenance directly in HTML, with JSON and basic/intermediate/expert Markdown downloads. Informational findings are collapsed by default. The beta server validates loopback Host and Origin headers, accepts the opaque `Origin: null` value used by the local in-app browser only when the Host remains loopback, requires a CSRF token, and allows two active tasks by default. It still has no user authentication and is intentionally local-only, not a public hosting service. Results use temporary storage and disappear when the application closes; use CLI `--output` or download the files to retain them.
 
 The CLI also accepts Git directly:
 
@@ -104,7 +104,7 @@ robot-doctor-scan my_robot --dependency-mode direct --suppress RD202 --severity 
 - `dependency_mode=all` restores strict warning behavior; `off` disables dependency suggestions.
 - `suppress_diagnostics`, `severity_overrides`, dependency ignore patterns, and minimum confidence provide repository-specific feedback controls.
 - `max_file_size_bytes`, `max_total_size_bytes`, `max_files`, and `max_repository_entries` bound reads and streaming traversal. Skips or truncation are reported as `RD004`, `RD005`, `RD007`, `RD009`, or `RD010`.
-- HTTPS Git intake has a one-GiB checkout cap by default. Override it explicitly with `--max-checkout-size-mb`; the local web administrator can also set `--max-concurrent-tasks`.
+- HTTPS Git intake requires Git 2.37 or newer for pinned hostname resolution, disables redirects, and has a one-GiB checkout cap by default. Override the cap explicitly with `--max-checkout-size-mb`; the local web administrator can also set `--max-concurrent-tasks`.
 
 The measured warning reduction and unresolved-entity policy are documented in `docs/noise_calibration.md`.
 
@@ -155,4 +155,4 @@ The current root license is proprietary and all rights are reserved. This conser
 
 Robot Doctor does not claim runtime certainty. Dynamic names, substitutions, external packages, plugin loading, runtime TF, and actual DDS QoS negotiation require a built or running system for confirmation. Type mismatches are errors only when endpoints are proven to share a node or launch deployment; otherwise they remain lower-confidence warnings. An optional live ROS graph comparison remains a later phase because it requires a sourced ROS installation and a running robot or simulation.
 
-ZIP intake rejects every `.git` path component, including case and trailing-space variants, before extraction. Git provenance collection also ignores global/system configuration and disables repository hooks, `core.fsmonitor`, and the untracked cache. Git URL intake currently rejects literal local/private addresses but does not pin resolved DNS addresses or independently validate every redirect destination. Private-repository tokens are appropriate only for the documented local workflow and should be read-only and short-lived. This is acceptable only inside the documented loopback beta boundary; complete `SECURITY.md` hosted-service controls before deployment beyond one trusted local user.
+ZIP intake rejects every `.git` path component, including case and trailing-space variants, before extraction. Git provenance collection ignores global/system configuration and disables repository hooks, `core.fsmonitor`, and the untracked cache. Git URL intake rejects literal or DNS-resolved non-public addresses, pins each clone to the validated address set, and rejects redirects instead of trusting a new destination. Private-repository tokens remain appropriate only for the documented local workflow and should be repository-scoped, read-only, and short-lived. Hosted or multi-user deployment remains unsupported until every control in `SECURITY.md` is implemented.

@@ -1,6 +1,7 @@
 services:
   robot-doctor:
     build: .
+    user: "10001:10001"
     ports:
       - "127.0.0.1:8765:8765"
     read_only: true

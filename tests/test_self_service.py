@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import socket
 import sys
 import tempfile
 import unittest
@@ -18,7 +19,7 @@ if str(SOURCE_ROOT) not in sys.path:
 
 from robot_doctor.config import ScanConfig
 from robot_doctor import web as web_module
-from robot_doctor.intake import IntakeError, clone_git_repository, directory_size_exceeds, extract_zip_upload, validate_git_url
+from robot_doctor.intake import IntakeError, clone_git_repository, curlopt_resolve_value, directory_size_exceeds, extract_zip_upload, git_supports_pinned_https, resolve_public_git_host, validate_git_url
 from robot_doctor.scanner import scan_repository
 from robot_doctor.web import WebApplication, allowed_bind_host, architecture_visual, home_page, is_loopback_host, result_body, task_page, valid_loopback_host_header, valid_origin
 
@@ -29,6 +30,39 @@ class SelfServiceTests(unittest.TestCase):
         for value in ("file:///tmp/repository", "https://localhost/repository.git", "https://user:secret@example.com/repository.git"):
             with self.assertRaises(IntakeError):
                 validate_git_url(value)
+
+    def test_git_dns_resolution_rejects_non_public_answers_and_pins_public_addresses(self):
+        public_answers = [
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:50c0:8000::154", 443, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("185.199.108.153", 443)),
+        ]
+        with mock.patch("robot_doctor.intake.socket.getaddrinfo", return_value=public_answers):
+            hostname, port, addresses = resolve_public_git_host("https://github.example/repository.git")
+
+        self.assertEqual(hostname, "github.example")
+        self.assertEqual(port, 443)
+        self.assertEqual(addresses, ("185.199.108.153", "2606:50c0:8000::154"))
+        self.assertEqual(
+            curlopt_resolve_value(hostname, port, addresses),
+            "github.example:443:185.199.108.153,[2606:50c0:8000::154]",
+        )
+
+        mixed_answers = public_answers + [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))]
+        with mock.patch("robot_doctor.intake.socket.getaddrinfo", return_value=mixed_answers):
+            with self.assertRaisesRegex(IntakeError, "non-public address"):
+                resolve_public_git_host("https://github.example/repository.git")
+
+    def test_pinned_git_transport_requires_supported_git_version(self):
+        with mock.patch(
+            "robot_doctor.intake.subprocess.run",
+            return_value=mock.Mock(returncode=0, stdout="git version 2.36.6\n"),
+        ):
+            self.assertFalse(git_supports_pinned_https())
+        with mock.patch(
+            "robot_doctor.intake.subprocess.run",
+            return_value=mock.Mock(returncode=0, stdout="git version 2.37.0\n"),
+        ):
+            self.assertTrue(git_supports_pinned_https())
 
     def test_zip_extraction_blocks_path_traversal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -71,7 +105,14 @@ class SelfServiceTests(unittest.TestCase):
                 (destination / "large.bin").write_bytes(b"x" * 2_000)
                 return FakeProcess()
 
-            with mock.patch("robot_doctor.intake.subprocess.Popen", side_effect=fake_popen):
+            with (
+                mock.patch("robot_doctor.intake.git_supports_pinned_https", return_value=True),
+                mock.patch(
+                    "robot_doctor.intake.resolve_public_git_host",
+                    return_value=("github.com", 443, ("140.82.114.3",)),
+                ),
+                mock.patch("robot_doctor.intake.subprocess.Popen", side_effect=fake_popen),
+            ):
                 with self.assertRaisesRegex(IntakeError, "checkout exceeded"):
                     clone_git_repository("https://github.com/example/repository.git", destination, max_checkout_bytes=1_000)
 
@@ -94,7 +135,14 @@ class SelfServiceTests(unittest.TestCase):
                 destination.mkdir()
                 return CompleteProcess()
 
-            with mock.patch("robot_doctor.intake.subprocess.Popen", side_effect=fake_popen):
+            with (
+                mock.patch("robot_doctor.intake.git_supports_pinned_https", return_value=True),
+                mock.patch(
+                    "robot_doctor.intake.resolve_public_git_host",
+                    return_value=("github.com", 443, ("140.82.114.3",)),
+                ),
+                mock.patch("robot_doctor.intake.subprocess.Popen", side_effect=fake_popen),
+            ):
                 clone_git_repository(
                     "https://github.com/example/private.git",
                     destination,
@@ -102,8 +150,18 @@ class SelfServiceTests(unittest.TestCase):
                 )
 
         self.assertNotIn("private-token-value", " ".join(captured["command"]))
-        self.assertEqual(captured["environment"]["GIT_CONFIG_KEY_0"], "http.extraHeader")
-        self.assertNotIn("private-token-value", captured["environment"]["GIT_CONFIG_VALUE_0"])
+        config_count = int(captured["environment"]["GIT_CONFIG_COUNT"])
+        configuration = {
+            captured["environment"][f"GIT_CONFIG_KEY_{index}"]: captured["environment"][f"GIT_CONFIG_VALUE_{index}"]
+            for index in range(config_count)
+        }
+        self.assertEqual(configuration["http.followRedirects"], "false")
+        self.assertEqual(configuration["http.curloptResolve"], "github.com:443:140.82.114.3")
+        self.assertEqual(configuration["http.proxy"], "")
+        self.assertEqual(configuration["protocol.file.allow"], "never")
+        self.assertEqual(configuration["protocol.ext.allow"], "never")
+        self.assertNotIn("private-token-value", configuration["http.extraHeader"])
+        self.assertEqual(captured["environment"]["GIT_CONFIG_GLOBAL"], "/dev/null")
         self.assertEqual(captured["environment"]["GIT_TERMINAL_PROMPT"], "0")
 
     def test_web_security_and_task_quota(self):
@@ -198,10 +256,14 @@ class SelfServiceTests(unittest.TestCase):
         dockerfile = (WORKSPACE / "Dockerfile").read_text(encoding="utf-8")
         launcher = (WORKSPACE / "start_robot_doctor.command").read_text(encoding="utf-8")
         manifest = (WORKSPACE / "MANIFEST.in").read_text(encoding="utf-8")
+        workflow = (WORKSPACE / ".github" / "workflows" / "test.yml").read_text(encoding="utf-8")
 
         self.assertIn('127.0.0.1:8765:8765', compose)
+        self.assertIn('user: "10001:10001"', compose)
         self.assertIn("no-new-privileges:true", compose)
         self.assertIn("ROBOT_DOCTOR_CONTAINER=1", dockerfile)
+        self.assertIn("USER 10001:10001", dockerfile)
+        self.assertIn('test "$(id -u)" = "10001"', workflow)
         self.assertIn("docker compose up --build -d", launcher)
         self.assertIn("include compose.yaml", manifest)
         self.assertIn("include start_robot_doctor.command", manifest)

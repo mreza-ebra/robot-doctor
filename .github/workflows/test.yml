@@ -84,6 +84,7 @@ jobs:
         run: docker compose up --build -d
       - name: Verify container health and page
         run: |
+          docker compose exec -T robot-doctor sh -c 'test "$(id -u)" = "10001" && test "$(id -g)" = "10001"'
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:8765/healthz >/dev/null; then
               curl --fail --silent http://127.0.0.1:8765/ | grep 'Scan repository'

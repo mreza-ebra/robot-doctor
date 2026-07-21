@@ -25,6 +25,8 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Private Git tokens are excluded from clone arguments, task records, and scan artifacts.
 - ZIP intake rejects `.git` metadata before extraction, and provenance commands disable hooks, repository fsmonitor executables, global/system configuration, and untracked-cache refreshes.
 - Local browser submissions accept an opaque `Origin: null` only with a validated loopback Host and CSRF token.
+- The Docker image and Compose service run as fixed unprivileged UID/GID `10001:10001`, with CI rejecting root execution.
+- HTTPS Git intake rejects non-public DNS answers, pins Git/libcurl to validated addresses, disables redirects and proxies, and disallows file/external-helper transports.
 
 ### Known Limits
 
