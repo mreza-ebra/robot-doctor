@@ -19,7 +19,7 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.8.0"},
+    "schema_version": {"const": "1.9.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
     "provenance": {"$ref": "#/$defs/provenance"},
@@ -601,7 +601,7 @@
         "actuators": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "package": {"type": "string"},
         "deployment_scope": {"enum": ["production", "test", "example"]},
-        "match_status": {"enum": ["unique_match", "ambiguous", "missing_interface", "unclaimed"]},
+        "match_status": {"enum": ["unique_match", "cross_package_candidate", "ambiguous", "missing_interface", "unclaimed"]},
         "match_basis": {"type": "string"},
         "candidate_hardware_components": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "fact_type": {"const": "inferred"},

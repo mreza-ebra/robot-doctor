@@ -18,8 +18,11 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Keep hardware, actuator, sensor, and transmission plugins out of the generic algorithm bucket and add control-specific modification guidance.
 - Count summary services and actions as unique resolved graph interfaces, consistently with topics.
 - Resolve deterministic Xacro control macros through each consumer's static include graph, preventing unrelated duplicate macro names from changing expansion results.
+- Refuse repository-wide Xacro fallback when a macro is not visible through the consumer's include graph.
 - Build evidence-backed controller → command interface → hardware → joint/resource → transmission → actuator chains, including unique, ambiguous, missing-interface, and unclaimed links.
 - Qualify control-chain candidates by deployment scope and package, refusing to cross-link similarly named robots when multiple hardware matches remain.
+- Keep a sole cross-package control interface as an unresolved candidate unless static deployment evidence proves the controller-to-hardware relationship.
+- Make formal Draft 2020-12 JSON Schema validation mandatory in the declared test environment instead of skipping when its validator is missing.
 - Render complete HTML inventory, role, control, and modification tables instead of silently truncating them.
 
 ## [0.5.0] - 2026-07-22

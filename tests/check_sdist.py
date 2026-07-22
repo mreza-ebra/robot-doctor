@@ -19,6 +19,8 @@ def main() -> int:
         "src/robot_doctor/web.py",
         "tests/fixtures/cpp_robot/probe_cpp/urdf/control_macro.xacro",
         "tests/fixtures/cpp_robot/probe_cpp/urdf/generated_robot.xacro",
+        "tests/fixtures/cpp_robot/probe_cpp/urdf/orphan_macro.xacro",
+        "tests/fixtures/cpp_robot/probe_cpp/urdf/unincluded_invocation.xacro",
         "tests/fixtures/cpp_robot/probe_cpp/urdf/unrelated_macro.xacro",
         "tests/run_live_git_intake.py",
     }

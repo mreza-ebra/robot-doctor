@@ -95,6 +95,7 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertTrue(generated["resolved"])
         self.assertTrue(any(record["extractor"] == "xacro_macro_invocation" for record in generated["evidence"]))
         self.assertNotIn("WrongSystem", {item["name"] for item in control["hardware_components"]})
+        self.assertNotIn("UnincludedSystem", {item["name"] for item in control["hardware_components"]})
         self.assertFalse(any("${" in item["name"] for item in control["hardware_components"]))
         configured_controller = next(item for item in control["controllers"] if item["name"] == "drive_controller")
         self.assertEqual(configured_controller["joints"], ["drive_joint"])
@@ -167,6 +168,8 @@ drive_controller:
                     encoding="utf-8",
                 )
             data = ros_repo_discover.scan_repository(root)
+            shutil.rmtree(root / "robot_b")
+            single_candidate_data = ros_repo_discover.scan_repository(root)
 
         chains = [
             item
@@ -180,6 +183,15 @@ drive_controller:
         self.assertEqual(len(chains[0]["candidate_hardware_components"]), 2)
         self.assertTrue(any(value.startswith("robot_a:") for value in chains[0]["candidate_hardware_components"]))
         self.assertTrue(any(value.startswith("robot_b:") for value in chains[0]["candidate_hardware_components"]))
+        single_candidate = next(
+            item
+            for item in single_candidate_data["architecture"]["ros2_control"]["control_chains"]
+            if item.get("controller") == "drive_controller"
+        )
+        self.assertEqual(single_candidate["match_status"], "cross_package_candidate")
+        self.assertFalse(single_candidate["resolved"])
+        self.assertIsNone(single_candidate["hardware_component"])
+        self.assertEqual(len(single_candidate["candidate_hardware_components"]), 1)
 
     def test_launch_graph_covers_python_xml_yaml_and_composition(self):
         data = ros_repo_discover.scan_repository(FIXTURES / "launch_robot")
@@ -683,6 +695,7 @@ void imu_case()
         self.assertEqual(definitions["ros2Control"]["properties"]["command_interfaces"]["items"]["$ref"], "#/$defs/controlInterface")
         self.assertEqual(definitions["ros2Control"]["properties"]["control_chains"]["items"]["$ref"], "#/$defs/controlChain")
         self.assertTrue({"match_status", "match_basis", "candidate_hardware_components"} <= set(definitions["controlChain"]["required"]))
+        self.assertIn("cross_package_candidate", definitions["controlChain"]["properties"]["match_status"]["enum"])
         self.assertTrue({"kind", "name", "type", "file", "line", "confidence", "resolved", "evidence"} <= set(definitions["finding"]["required"]))
         self.assertTrue({"file", "format", "package", "actions", "includes", "arguments", "confidence", "evidence"} <= set(definitions["launchFile"]["required"]))
         self.assertTrue({"id", "name", "namespace", "package", "origin", "active", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "parameters", "confidence", "evidence"} <= set(definitions["node"]["required"]))
@@ -703,11 +716,11 @@ void imu_case()
         self.assertEqual(json.loads(packaged_schema), json.loads(root_schema))
         self.assertEqual(json.loads(packaged_config_schema), json.loads(root_config_schema))
 
-    def test_scan_matches_json_schema_when_validator_is_installed(self):
+    def test_scan_matches_json_schema(self):
         try:
             import jsonschema
-        except ImportError:
-            self.skipTest("install the test extra for formal JSON Schema validation")
+        except ImportError as exc:
+            self.fail(f"formal schema validation requires the declared test dependencies: {exc}")
         schema = json.loads((WORKSPACE / "schemas" / "robot_doctor_scan.schema.json").read_text(encoding="utf-8"))
         config_schema = json.loads((WORKSPACE / "schemas" / "robot_doctor_config.schema.json").read_text(encoding="utf-8"))
         jsonschema.Draft202012Validator.check_schema(schema)

@@ -32,7 +32,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.8.0"
+SCHEMA_VERSION = "1.9.0"
 SCANNER_VERSION = "0.6.0.dev0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -2140,17 +2140,22 @@ def xacro_include_order(consumer_file: str, registry: XacroRegistry) -> list[str
     return ordered
 
 
-def select_xacro_macro(name: str, consumer_file: str, registry: XacroRegistry) -> dict[str, Any] | None:
+def select_xacro_macro(
+    name: str,
+    consumer_file: str,
+    registry: XacroRegistry,
+    visibility_root: str | None = None,
+) -> dict[str, Any] | None:
     candidates = registry.macros.get(name, [])
     local = [item for item in candidates if item["file"] == consumer_file]
     if local:
         return max(local, key=lambda item: item["line"])
-    visible_order = xacro_include_order(consumer_file, registry)
+    visible_order = xacro_include_order(visibility_root or consumer_file, registry)
     visible_rank = {file: index for index, file in enumerate(visible_order)}
     visible = [item for item in candidates if item["file"] in visible_rank]
     if visible:
         return max(visible, key=lambda item: (visible_rank[item["file"]], item["line"]))
-    return candidates[0] if len(candidates) == 1 else None
+    return None
 
 
 def render_xacro_macro(
@@ -2160,8 +2165,10 @@ def render_xacro_macro(
     registry: XacroRegistry,
     inherited_values: dict[str, str],
     depth: int = 0,
+    visibility_root: str | None = None,
 ) -> tuple[str | None, dict[str, Any] | None, bool]:
-    definition = select_xacro_macro(name, consumer_file, registry)
+    visibility_root = visibility_root or consumer_file
+    definition = select_xacro_macro(name, consumer_file, registry, visibility_root)
     if definition is None or depth >= 6:
         return None, definition, False
     values = dict(inherited_values)
@@ -2181,6 +2188,7 @@ def render_xacro_macro(
             registry,
             values,
             depth + 1,
+            visibility_root,
         )
         return nested if nested is not None else match.group(0)
 
@@ -3147,11 +3155,48 @@ def build_control_chains(model: dict[str, list[dict[str, Any]]]) -> list[dict[st
             }
         )
 
+    def append_candidate_chain(
+        controller: dict[str, Any],
+        identifier: str,
+        candidates: list[dict[str, Any]],
+        status: str,
+        basis: str,
+        confidence_cap: float,
+    ) -> None:
+        joint, _, interface_name = identifier.partition("/")
+        chains.append(
+            {
+                "id": f"{controller['package']}:{controller['name']}:{identifier}:{status}",
+                "controller": controller["name"],
+                "controller_type": controller.get("type"),
+                "command_interface": identifier,
+                "interface_name": interface_name or None,
+                "hardware_component": None,
+                "hardware_plugin": None,
+                "resource": joint or None,
+                "resource_type": "joint" if joint else None,
+                "transmission": None,
+                "actuators": [],
+                "package": controller["package"],
+                "deployment_scope": combined_deployment_scope(
+                    controller.get("deployment_scope"),
+                    *(item.get("deployment_scope") for item in candidates),
+                ),
+                "match_status": status,
+                "match_basis": basis,
+                "candidate_hardware_components": sorted({control_interface_label(item) for item in candidates}),
+                "fact_type": "inferred",
+                "confidence": round(min(float(controller.get("confidence", 0.0)), confidence_cap), 2),
+                "resolved": False,
+                "evidence": control_chain_evidence(controller, *candidates),
+            }
+        )
+
     for controller in configured_controllers:
         for identifier in sorted(controller_interface_identifiers(controller)):
             candidates = ranked_control_interfaces(controller, model["command_interfaces"], identifier)
             matched_interfaces.update(control_interface_identity(item) for item in candidates)
-            if len(candidates) == 1:
+            if len(candidates) == 1 and candidates[0].get("package") == controller.get("package"):
                 append_linked_chain(
                     controller,
                     candidates[0],
@@ -3159,35 +3204,25 @@ def build_control_chains(model: dict[str, list[dict[str, Any]]]) -> list[dict[st
                     "unique deployment-scope and package-qualified controller/interface match",
                 )
                 continue
+            if len(candidates) == 1:
+                append_candidate_chain(
+                    controller,
+                    identifier,
+                    candidates,
+                    "cross_package_candidate",
+                    "one scope-compatible interface exists in another package, but no static deployment evidence proves the controller-to-hardware link",
+                    0.55,
+                )
+                continue
             joint, _, interface_name = identifier.partition("/")
             if len(candidates) > 1:
-                candidate_components = sorted({control_interface_label(item) for item in candidates})
-                chains.append(
-                    {
-                        "id": f"{controller['package']}:{controller['name']}:{identifier}:ambiguous",
-                        "controller": controller["name"],
-                        "controller_type": controller.get("type"),
-                        "command_interface": identifier,
-                        "interface_name": interface_name or None,
-                        "hardware_component": None,
-                        "hardware_plugin": None,
-                        "resource": joint or None,
-                        "resource_type": "joint" if joint else None,
-                        "transmission": None,
-                        "actuators": [],
-                        "package": controller["package"],
-                        "deployment_scope": combined_deployment_scope(
-                            controller.get("deployment_scope"),
-                            *(item.get("deployment_scope") for item in candidates),
-                        ),
-                        "match_status": "ambiguous",
-                        "match_basis": "multiple equally ranked package/scope-compatible hardware interfaces",
-                        "candidate_hardware_components": candidate_components,
-                        "fact_type": "inferred",
-                        "confidence": round(min(float(controller.get("confidence", 0.0)), 0.58), 2),
-                        "resolved": False,
-                        "evidence": control_chain_evidence(controller, *candidates),
-                    }
+                append_candidate_chain(
+                    controller,
+                    identifier,
+                    candidates,
+                    "ambiguous",
+                    "multiple equally ranked package/scope-compatible hardware interfaces",
+                    0.58,
                 )
                 continue
             chains.append(
@@ -3224,7 +3259,7 @@ def build_control_chains(model: dict[str, list[dict[str, Any]]]) -> list[dict[st
             )
     scope_rank = {"production": 0, "example": 1, "test": 2}
     unique = {item["id"]: item for item in chains}
-    status_rank = {"unique_match": 0, "ambiguous": 1, "missing_interface": 2, "unclaimed": 3}
+    status_rank = {"unique_match": 0, "cross_package_candidate": 1, "ambiguous": 2, "missing_interface": 3, "unclaimed": 4}
     return sorted(unique.values(), key=lambda item: (scope_rank.get(item["deployment_scope"], 3), status_rank.get(item["match_status"], 4), item.get("package") or "", item.get("controller") or "", item.get("command_interface") or ""))
 
 

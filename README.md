@@ -82,7 +82,7 @@ python3 tools/robot_doctor_web.py
 
 ## Output Contract
 
-JSON output uses schema version `1.8.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. Architecture nodes, interfaces, inferred roles, `ros2_control` entities, and modification points include `production`, `test`, or `example` deployment scope so test fixtures do not contaminate production guidance or diagnostics. Xacro control macros are selected from the consumer file and its statically resolved include graph rather than from unrelated repository files. Control-chain records expose unique, ambiguous, missing-interface, and unclaimed match states; package/scope collisions remain explicit candidates instead of becoming inferred cross-robot links. Summary topic, service, and action counts represent unique resolved graph names rather than endpoint totals. Rendered HTML inventory tables contain every detected row; only the compact topology preview is intentionally summarized and states its displayed count. The top-level sections are:
+JSON output uses schema version `1.9.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. Architecture nodes, interfaces, inferred roles, `ros2_control` entities, and modification points include `production`, `test`, or `example` deployment scope so test fixtures do not contaminate production guidance or diagnostics. Xacro control macros are selected only from the consumer file and its statically resolved include graph rather than from unrelated repository files. Control-chain records expose unique, cross-package candidate, ambiguous, missing-interface, and unclaimed match states; package/scope collisions and unsupported cross-package deployment assumptions remain explicit candidates instead of becoming inferred cross-robot links. Summary topic, service, and action counts represent unique resolved graph names rather than endpoint totals. Rendered HTML inventory tables contain every detected row; only the compact topology preview is intentionally summarized and states its displayed count. The top-level sections are:
 
 - `packages`: source-backed package and entity inventories.
 - `configuration`: effective limits, diagnostic policy, and suppressed-diagnostic count.
@@ -118,6 +118,8 @@ Run the automated suite:
 python3 -m pip install -e ".[test]"
 python3 -m unittest discover -s tests -v
 ```
+
+The test extra is required: formal Draft 2020-12 output/configuration schema validation is a mandatory test and fails rather than silently skipping when `jsonschema` is unavailable.
 
 The persisted validation set under `tests/fixtures/` contains unrelated Python, C++, and launch-focused ROS 2 packages, including keyword APIs, modern entry points, nested parameter YAML, and generic templated C++ wrappers. `tests/real_repositories.json` pins TurtleBot 4, ROS 2 Examples, ROS 2 Demos, MoveIt 2, and ros2_control, plus a combined 95-package workspace. CI verifies exact package, launch, node, topic, service, and action inventories with zero high-confidence error diagnostics.
 

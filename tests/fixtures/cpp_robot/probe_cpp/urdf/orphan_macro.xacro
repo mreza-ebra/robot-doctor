@@ -1,0 +1,12 @@
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="orphan_control" params="system_name">
+    <ros2_control name="${system_name}" type="system">
+      <hardware>
+        <plugin>probe_cpp/OrphanHardware</plugin>
+      </hardware>
+      <joint name="orphan_joint">
+        <command_interface name="position"/>
+      </joint>
+    </ros2_control>
+  </xacro:macro>
+</robot>
