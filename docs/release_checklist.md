@@ -19,7 +19,8 @@
 - [x] Docker image declares fixed non-root UID/GID `10001:10001`; local tests enforce the image and Compose configuration.
 - [x] DNS lookup timeout and cancellation regressions pass locally, and timed-out resolver processes are terminated.
 - [x] A real DNS-pinned HTTPS clone passes locally and in the dedicated CI live-intake job.
-- [ ] Verify the final macOS launcher manually in current Safari and Chrome builds.
+- [x] Verify the final macOS launcher manually in a current Chrome build.
+- [ ] Verify the final macOS launcher manually in a current Safari build.
 
 ## Publication
 
@@ -31,8 +32,9 @@
 - [x] GitHub Actions run `29862156154` succeeds for commit `ed290bc` without action runtime deprecation warnings.
 - [x] Push Python 3.10.15 floor and terminable DNS resolver commit `aef5f2e` to `origin/main`.
 - [x] GitHub Actions run `29865323582` succeeds for commit `aef5f2e`.
-- [ ] Create and push annotated tag `v0.5.0` only after remote CI is green.
-- [ ] Publish release artifacts generated from that tag.
+- [x] GitHub Actions run `29939796043` succeeds for release candidate `ee5e339`.
+- [x] Create and push annotated tag `v0.5.0` at `ee5e339` after remote CI is green.
+- [x] Publish the verified wheel and source distribution from tag `v0.5.0`.
 - [x] Enable private vulnerability reporting on the official repository.
 
-GitHub Actions run `29865323582` completed successfully on 2026-07-21 for commit `aef5f2e`; unit tests at Python 3.10.15 and 3.13, package, real-repository, accuracy, generated-artifact, live DNS-pinned Git intake, non-root container-build, and live health-check jobs all passed. Private vulnerability reporting is enabled. Remaining release work is Safari/Chrome launcher verification, tagging, and release artifacts.
+Robot Doctor `v0.5.0` was published on 2026-07-22 from commit `ee5e339` after GitHub Actions run `29939796043` passed unit tests at Python 3.10.15 and 3.13, package, real-repository, accuracy, generated-artifact, live DNS-pinned Git intake, non-root container-build, and live health-check jobs. The release includes verified wheel and source-distribution artifacts, and private vulnerability reporting is enabled. Remaining release work is Safari launcher verification.
