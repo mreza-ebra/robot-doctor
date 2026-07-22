@@ -338,6 +338,7 @@ class SelfServiceTests(unittest.TestCase):
         self.assertIn("ros2_control command chains", rendered)
         self.assertIn("drive_controller", rendered)
         self.assertIn("drive_joint/velocity", rendered)
+        self.assertIn("unique match", rendered)
 
     def test_docker_one_command_assets_are_local_only(self):
         compose = (WORKSPACE / "compose.yaml").read_text(encoding="utf-8")

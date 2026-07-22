@@ -94,6 +94,7 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertEqual(generated["command_interfaces"], ["lift_joint/position"])
         self.assertTrue(generated["resolved"])
         self.assertTrue(any(record["extractor"] == "xacro_macro_invocation" for record in generated["evidence"]))
+        self.assertNotIn("WrongSystem", {item["name"] for item in control["hardware_components"]})
         self.assertFalse(any("${" in item["name"] for item in control["hardware_components"]))
         configured_controller = next(item for item in control["controllers"] if item["name"] == "drive_controller")
         self.assertEqual(configured_controller["joints"], ["drive_joint"])
@@ -127,9 +128,58 @@ class RobotDoctorScannerTests(unittest.TestCase):
             ("drive_joint/velocity", "ProbeSystem", "drive_joint", "drive_transmission", ["drive_motor"]),
         )
         self.assertTrue(chain["resolved"])
+        self.assertEqual(chain["match_status"], "unique_match")
         generated_chain = next(item for item in control["control_chains"] if item["command_interface"] == "lift_joint/position")
         self.assertIsNone(generated_chain["controller"])
         self.assertFalse(generated_chain["resolved"])
+        self.assertEqual(generated_chain["match_status"], "unclaimed")
+
+    def test_control_chain_does_not_cross_link_same_named_robots(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            controller_package = root / "controller_config"
+            self.write_minimal_package(controller_package, "controller_config")
+            (controller_package / "controllers.yaml").write_text(
+                """controller_manager:
+  ros__parameters:
+    drive_controller:
+      type: controller_config/DriveController
+drive_controller:
+  ros__parameters:
+    joints: [shared_joint]
+    command_interfaces: [velocity]
+""",
+                encoding="utf-8",
+            )
+            for package_name in ("robot_a", "robot_b"):
+                package = root / package_name
+                self.write_minimal_package(package, package_name)
+                urdf = package / "urdf" / "robot.urdf"
+                urdf.parent.mkdir()
+                urdf.write_text(
+                    f"""<robot name="{package_name}">
+  <ros2_control name="{package_name}_system" type="system">
+    <hardware><plugin>{package_name}/System</plugin></hardware>
+    <joint name="shared_joint"><command_interface name="velocity"/></joint>
+  </ros2_control>
+</robot>
+""",
+                    encoding="utf-8",
+                )
+            data = ros_repo_discover.scan_repository(root)
+
+        chains = [
+            item
+            for item in data["architecture"]["ros2_control"]["control_chains"]
+            if item.get("controller") == "drive_controller"
+        ]
+        self.assertEqual(len(chains), 1)
+        self.assertEqual(chains[0]["match_status"], "ambiguous")
+        self.assertFalse(chains[0]["resolved"])
+        self.assertIsNone(chains[0]["hardware_component"])
+        self.assertEqual(len(chains[0]["candidate_hardware_components"]), 2)
+        self.assertTrue(any(value.startswith("robot_a:") for value in chains[0]["candidate_hardware_components"]))
+        self.assertTrue(any(value.startswith("robot_b:") for value in chains[0]["candidate_hardware_components"]))
 
     def test_launch_graph_covers_python_xml_yaml_and_composition(self):
         data = ros_repo_discover.scan_repository(FIXTURES / "launch_robot")
@@ -632,6 +682,7 @@ void imu_case()
         self.assertEqual(definitions["ros2Control"]["properties"]["hardware_components"]["items"]["$ref"], "#/$defs/controlEntity")
         self.assertEqual(definitions["ros2Control"]["properties"]["command_interfaces"]["items"]["$ref"], "#/$defs/controlInterface")
         self.assertEqual(definitions["ros2Control"]["properties"]["control_chains"]["items"]["$ref"], "#/$defs/controlChain")
+        self.assertTrue({"match_status", "match_basis", "candidate_hardware_components"} <= set(definitions["controlChain"]["required"]))
         self.assertTrue({"kind", "name", "type", "file", "line", "confidence", "resolved", "evidence"} <= set(definitions["finding"]["required"]))
         self.assertTrue({"file", "format", "package", "actions", "includes", "arguments", "confidence", "evidence"} <= set(definitions["launchFile"]["required"]))
         self.assertTrue({"id", "name", "namespace", "package", "origin", "active", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "parameters", "confidence", "evidence"} <= set(definitions["node"]["required"]))

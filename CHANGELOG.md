@@ -17,8 +17,9 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Add a dedicated `ros2_control` model for hardware components, controllers, transmissions, command/state interfaces, and typed plugin base-class roles.
 - Keep hardware, actuator, sensor, and transmission plugins out of the generic algorithm bucket and add control-specific modification guidance.
 - Count summary services and actions as unique resolved graph interfaces, consistently with topics.
-- Expand deterministic repository-wide Xacro control macros without executing repository code, retaining unresolved expressions when static substitution is insufficient.
-- Build evidence-backed controller → command interface → hardware → joint/resource → transmission → actuator chains, including unclaimed and unresolved links.
+- Resolve deterministic Xacro control macros through each consumer's static include graph, preventing unrelated duplicate macro names from changing expansion results.
+- Build evidence-backed controller → command interface → hardware → joint/resource → transmission → actuator chains, including unique, ambiguous, missing-interface, and unclaimed links.
+- Qualify control-chain candidates by deployment scope and package, refusing to cross-link similarly named robots when multiple hardware matches remain.
 - Render complete HTML inventory, role, control, and modification tables instead of silently truncating them.
 
 ## [0.5.0] - 2026-07-22

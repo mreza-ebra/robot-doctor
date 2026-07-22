@@ -19,7 +19,7 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.7.0"},
+    "schema_version": {"const": "1.8.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
     "provenance": {"$ref": "#/$defs/provenance"},
@@ -586,7 +586,7 @@
     "controlChain": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "controller", "controller_type", "command_interface", "interface_name", "hardware_component", "hardware_plugin", "resource", "resource_type", "transmission", "actuators", "package", "deployment_scope", "fact_type", "confidence", "resolved", "evidence"],
+      "required": ["id", "controller", "controller_type", "command_interface", "interface_name", "hardware_component", "hardware_plugin", "resource", "resource_type", "transmission", "actuators", "package", "deployment_scope", "match_status", "match_basis", "candidate_hardware_components", "fact_type", "confidence", "resolved", "evidence"],
       "properties": {
         "id": {"type": "string"},
         "controller": {"$ref": "#/$defs/nullableString"},
@@ -601,6 +601,9 @@
         "actuators": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "package": {"type": "string"},
         "deployment_scope": {"enum": ["production", "test", "example"]},
+        "match_status": {"enum": ["unique_match", "ambiguous", "missing_interface", "unclaimed"]},
+        "match_basis": {"type": "string"},
+        "candidate_hardware_components": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "fact_type": {"const": "inferred"},
         "confidence": {"$ref": "#/$defs/confidence"},
         "resolved": {"type": "boolean"},

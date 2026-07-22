@@ -208,7 +208,8 @@ def ros2_control_diagram(data: dict[str, Any]) -> str:
         hardware_id = f"control_hardware_{index}"
         resource_id = f"control_resource_{index}"
         controller = chain.get("controller") or "Unclaimed controller"
-        hardware = chain.get("hardware_component") or "Unresolved hardware"
+        candidate_count = len(chain.get("candidate_hardware_components") or [])
+        hardware = chain.get("hardware_component") or (f"Ambiguous hardware ({candidate_count} candidates)" if chain.get("match_status") == "ambiguous" else "Unresolved hardware")
         resource = chain.get("resource") or "Unresolved resource"
         style = "-.->" if not chain.get("resolved") else "-->"
         lines.append(f'  {controller_id}["{controller}"] {style} {interface_id}(("{chain.get("command_interface") or "Unresolved interface"}"))')
@@ -361,7 +362,9 @@ def control_chain_rows(data: dict[str, Any]) -> list[list[Any]]:
             item.get("deployment_scope") or "production",
             item.get("controller") or "<unclaimed>",
             item.get("command_interface") or "<unresolved>",
+            item.get("match_status", "unknown").replace("_", " "),
             item.get("hardware_component") or "<unresolved>",
+            item.get("candidate_hardware_components") or [],
             item.get("resource") or "<unresolved>",
             item.get("transmission") or "direct / not detected",
             item.get("actuators") or [],
@@ -508,7 +511,7 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 {md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data)[:15])}
 
-{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Hardware', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
+{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Match', 'Hardware', 'Candidates', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
 
 ## Where To Make Changes
 
@@ -601,7 +604,7 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 
 ### Controller-To-Hardware Chains
 
-{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Hardware', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
+{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Match', 'Hardware', 'Candidates', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
 
 ## Sensors, Algorithms, And Actuation
 
@@ -736,7 +739,7 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 
 ### Controller-To-Hardware Chains
 
-{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Hardware', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
+{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Match', 'Hardware', 'Candidates', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
 
 ## Inferred Architecture
 
