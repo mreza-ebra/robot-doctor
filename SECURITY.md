@@ -6,7 +6,7 @@ Robot Doctor is currently a local-only beta. Security fixes target the latest `0
 
 ## Reporting A Vulnerability
 
-Do not open a public issue containing exploit details. Use the official GitHub repository's private vulnerability-reporting feature once it is enabled; until then, report privately to the repository owner through the same trusted channel used to receive the software.
+Do not open a public issue containing exploit details. Use the official GitHub repository's enabled private vulnerability-reporting feature so disclosure remains private and structured.
 
 Include the affected version or commit, operating system, reproduction steps, impact, and whether untrusted repository content is required. Expect an acknowledgement within five business days; remediation timing depends on severity and reproducibility.
 

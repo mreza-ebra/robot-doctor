@@ -29,9 +29,10 @@
 - [x] The non-root container build and live health-check job succeeds in run `29861027447`.
 - [x] Push DNS cancellation, live intake, and Node.js 24 action commit `ed290bc` to `origin/main`.
 - [x] GitHub Actions run `29862156154` succeeds for commit `ed290bc` without action runtime deprecation warnings.
-- [ ] Confirm the Python 3.10.15 floor and terminable DNS resolver follow-up passes remote CI before tagging.
+- [x] Push Python 3.10.15 floor and terminable DNS resolver commit `aef5f2e` to `origin/main`.
+- [x] GitHub Actions run `29865323582` succeeds for commit `aef5f2e`.
 - [ ] Create and push annotated tag `v0.5.0` only after remote CI is green.
 - [ ] Publish release artifacts generated from that tag.
-- [ ] Enable private vulnerability reporting on the official repository.
+- [x] Enable private vulnerability reporting on the official repository.
 
-GitHub Actions run `29862156154` completed successfully on 2026-07-21 for commit `ed290bc`; unit, package, real-repository, accuracy, generated-artifact, live DNS-pinned Git intake, non-root container-build, and live health-check jobs all passed. Remaining release work is the Python/DNS follow-up CI run, Safari/Chrome launcher verification, tagging, release artifacts, and private vulnerability reporting.
+GitHub Actions run `29865323582` completed successfully on 2026-07-21 for commit `aef5f2e`; unit tests at Python 3.10.15 and 3.13, package, real-repository, accuracy, generated-artifact, live DNS-pinned Git intake, non-root container-build, and live health-check jobs all passed. Private vulnerability reporting is enabled. Remaining release work is Safari/Chrome launcher verification, tagging, and release artifacts.

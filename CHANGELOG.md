@@ -2,7 +2,7 @@
 
 All notable changes to Robot Doctor are documented here. Versions follow Semantic Versioning.
 
-## [0.5.0] - 2026-07-20
+## [0.5.0] - 2026-07-22
 
 ### Added
 
