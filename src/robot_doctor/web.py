@@ -200,9 +200,10 @@ def architecture_visual(data: dict[str, Any]) -> str:
         for node in data.get("architecture", {}).get("nodes", [])
         if node.get("active") and (node.get("name") or node.get("executable"))
     ]
+    scope_rank = {"production": 0, "example": 1, "test": 2}
     nodes = sorted(
         all_nodes,
-        key=lambda node: (-endpoint_count(node), str(node.get("package") or ""), str(node.get("name") or "")),
+        key=lambda node: (scope_rank.get(str(node.get("deployment_scope")), 3), -endpoint_count(node), str(node.get("package") or ""), str(node.get("name") or "")),
     )[:8]
     candidate_edges: list[tuple[str, tuple[str, str], str]] = []
     interface_frequency: dict[tuple[str, str], int] = {}
@@ -240,13 +241,23 @@ def architecture_visual(data: dict[str, Any]) -> str:
         )
         for node_id, interface, direction in edges
     )
-    node_svg = "".join(
-        f'<g><title>{html.escape(str(node.get("namespace") or "/") + "/" + str(node.get("name") or node.get("executable") or ""))}</title>'
-        f'<rect x="30" y="{node_positions[str(node["id"])]}" width="270" height="50" rx="8" fill="#eef2ff" stroke="#6366f1"/>'
-        f'<text x="45" y="{node_positions[str(node["id"])] + 21}" font-size="14" font-weight="700" fill="#172033">{html.escape(compact(node.get("name") or node.get("executable") or "unresolved"))}</text>'
-        f'<text x="45" y="{node_positions[str(node["id"])] + 40}" font-size="11" fill="#596579">{html.escape(compact(node.get("package") or "external", 34))}</text></g>'
-        for node in nodes
-    )
+    node_colors = {
+        "production": ("#eef2ff", "#6366f1"),
+        "example": ("#f0fdf4", "#16a34a"),
+        "test": ("#f8fafc", "#94a3b8"),
+    }
+    node_svg_parts = []
+    for node in nodes:
+        scope = str(node.get("deployment_scope") or "production")
+        fill, stroke = node_colors.get(scope, node_colors["production"])
+        y = node_positions[str(node["id"])]
+        node_svg_parts.append(
+            f'<g><title>{html.escape(str(node.get("namespace") or "/") + "/" + str(node.get("name") or node.get("executable") or ""))}</title>'
+            f'<rect x="30" y="{y}" width="270" height="50" rx="8" fill="{fill}" stroke="{stroke}"/>'
+            f'<text x="45" y="{y + 21}" font-size="14" font-weight="700" fill="#172033">{html.escape(compact(node.get("name") or node.get("executable") or "unresolved"))}</text>'
+            f'<text x="45" y="{y + 40}" font-size="11" fill="#596579">{html.escape(compact(node.get("package") or "external", 24))} · {html.escape(scope)}</text></g>'
+        )
+    node_svg = "".join(node_svg_parts)
     interface_svg_parts = []
     colors = {"topic": ("#ecfdf5", "#059669"), "service": ("#fff7ed", "#ea580c"), "action": ("#fdf2f8", "#db2777")}
     for kind, name in interfaces:
@@ -264,7 +275,8 @@ def architecture_visual(data: dict[str, Any]) -> str:
         )
     if not nodes:
         node_svg = '<text x="410" y="150" text-anchor="middle" font-size="15" fill="#596579">No active source or launched nodes were detected.</text>'
-    note = f"Showing {len(nodes)} of {len(all_nodes)} active nodes and {len(interfaces)} connected interfaces. Arrows show endpoint direction."
+    scope_counts = {scope: sum(node.get("deployment_scope") == scope for node in all_nodes) for scope in ("production", "example", "test")}
+    note = f"Showing {len(nodes)} of {len(all_nodes)} active nodes ({scope_counts['production']} production, {scope_counts['example']} example, {scope_counts['test']} test) and {len(interfaces)} interfaces."
     return (
         f'<svg class="diagram" role="img" aria-label="Node and interface topology" viewBox="0 0 830 {height}">'
         '<defs><marker id="topology-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#64748b"/></marker></defs>'
@@ -278,11 +290,15 @@ def architecture_visual(data: dict[str, Any]) -> str:
 
 
 def metric_cards(summary: dict[str, Any]) -> str:
-    keys = ("packages", "launch_files", "nodes", "topics", "services", "actions", "resolved_entities", "unresolved_entities")
-    return '<div class="grid">' + "".join(
-        f'<div class="metric"><span>{html.escape(key.replace("_", " ").title())}</span><strong>{html.escape(str(summary.get(key, 0)))}</strong></div>'
+    keys = ("packages", "launch_files", "nodes", "architecture_nodes_total", "topics", "services", "actions", "resolved_entities", "unresolved_entities")
+    labels = {"nodes": "Active Nodes", "architecture_nodes_total": "All Architecture Nodes"}
+    cards = '<div class="grid">' + "".join(
+        f'<div class="metric"><span>{html.escape(labels.get(key, key.replace("_", " ").title()))}</span><strong>{html.escape(str(summary.get(key, 0)))}</strong></div>'
         for key in keys
     ) + "</div>"
+    scopes = summary.get("node_scopes") or {}
+    scope_text = " · ".join(f"{scope.title()}: {scopes.get(scope, 0)}" for scope in ("production", "example", "test"))
+    return cards + f'<p class="muted"><strong>Active node scopes:</strong> {html.escape(scope_text)}</p>'
 
 
 def diagnostic_card(item: dict[str, Any]) -> str:
@@ -328,9 +344,10 @@ def diagnostic_card(item: dict[str, Any]) -> str:
 
 
 def node_table(data: dict[str, Any], limit: int = 30) -> str:
+    scope_rank = {"production": 0, "example": 1, "test": 2}
     nodes = sorted(
         data.get("architecture", {}).get("nodes", []),
-        key=lambda item: (not item.get("active", False), str(item.get("package") or ""), str(item.get("name") or "")),
+        key=lambda item: (not item.get("active", False), scope_rank.get(str(item.get("deployment_scope")), 3), str(item.get("package") or ""), str(item.get("name") or "")),
     )[:limit]
     rows = "".join(
         "<tr>"
@@ -338,11 +355,12 @@ def node_table(data: dict[str, Any], limit: int = 30) -> str:
         f"<td>{html.escape(str(item.get('package') or ''))}</td>"
         f"<td>{html.escape(str(item.get('namespace') or '/'))}</td>"
         f"<td>{html.escape(str(item.get('origin') or ''))}</td>"
+        f"<td>{html.escape(str(item.get('deployment_scope') or 'production'))}</td>"
         f"<td>{sum(len(item.get(key, [])) for key in ('publishers', 'subscriptions', 'service_servers', 'service_clients', 'action_servers', 'action_clients'))}</td>"
         "</tr>"
         for item in nodes
     )
-    return rows or '<tr><td colspan="5">No source or launched nodes detected.</td></tr>'
+    return rows or '<tr><td colspan="6">No source or launched nodes detected.</td></tr>'
 
 
 def interface_table(data: dict[str, Any], graph_name: str, left: str, right: str, limit: int = 30) -> str:
@@ -351,11 +369,12 @@ def interface_table(data: dict[str, Any], graph_name: str, left: str, right: str
         "<tr>"
         f"<td>{html.escape(str(item.get('name') or '<unresolved>'))}</td>"
         f"<td>{html.escape(', '.join(str(value) for value in item.get('types', [])))}</td>"
+        f"<td>{html.escape(', '.join(str(value) for value in item.get('deployment_scopes', [])))}</td>"
         f"<td>{len(item.get(left, []))}</td><td>{len(item.get(right, []))}</td>"
         "</tr>"
         for item in interfaces
     )
-    return rows or '<tr><td colspan="4">None detected.</td></tr>'
+    return rows or '<tr><td colspan="5">None detected.</td></tr>'
 
 
 def role_table(data: dict[str, Any], limit: int = 40) -> str:
@@ -490,10 +509,10 @@ def result_body(
     return f"""
 <section><h2>Scan Summary</h2>{metric_cards(summary)}<p class="muted">Static analysis only; runtime/build confirmation remains a separate verification phase.</p></section>
 <section><h2>Architecture</h2>{architecture_visual(data)}
-<details open><summary>Nodes and communication ownership</summary><table><thead><tr><th>Node</th><th>Package</th><th>Namespace</th><th>Origin</th><th>Endpoints</th></tr></thead><tbody>{node_table(data)}</tbody></table></details>
-<details><summary>Topics</summary><table><thead><tr><th>Name</th><th>Types</th><th>Publishers</th><th>Subscribers</th></tr></thead><tbody>{interface_table(data, 'topics', 'publishers', 'subscribers')}</tbody></table></details>
-<details><summary>Services</summary><table><thead><tr><th>Name</th><th>Types</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'services', 'servers', 'clients')}</tbody></table></details>
-<details><summary>Actions</summary><table><thead><tr><th>Name</th><th>Types</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'actions', 'servers', 'clients')}</tbody></table></details>
+<details open><summary>Nodes and communication ownership</summary><table><thead><tr><th>Node</th><th>Package</th><th>Namespace</th><th>Origin</th><th>Scope</th><th>Endpoints</th></tr></thead><tbody>{node_table(data)}</tbody></table></details>
+<details><summary>Topics</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Publishers</th><th>Subscribers</th></tr></thead><tbody>{interface_table(data, 'topics', 'publishers', 'subscribers')}</tbody></table></details>
+<details><summary>Services</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'services', 'servers', 'clients')}</tbody></table></details>
+<details><summary>Actions</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'actions', 'servers', 'clients')}</tbody></table></details>
 <details open><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
 <details open><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
 <section><h2>Prioritized Findings</h2>{findings_filter_form(data, link_prefix, severity_filter, package_filter)}<p class="muted">Showing {len(shown)} of {len(diagnostics)} findings matching the current filters. Informational findings are collapsed by default.</p>{findings}</section>

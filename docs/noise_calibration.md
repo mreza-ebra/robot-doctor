@@ -11,9 +11,11 @@ The pinned 95-package ROS 2 workspace contains ROS 2 Examples, ROS 2 Demos, Move
 
 The default warning set contains 32 direct dependency findings, three CMake install findings, one topic-type warning, one action-type warning, and one launch executable warning. Strict mode remains available for maintainers who want every inferred dependency elevated.
 
+The architecture contains 348 active nodes out of 351 total source definitions and launch instances: 104 production, 73 test, and 171 example nodes. Test-only topic, service, action, and QoS graph entities produce no production-health findings. Interface mismatches become errors only when distinct, unconditional, resolved production nodes appear in the same launch file.
+
 ## Unresolved Entities
 
-The same workspace contains 779 resolved and 234 unresolved static entities. Unresolved expressions remain in JSON because deleting them would hide analysis uncertainty. Users can:
+The same workspace contains 720 resolved and 169 unresolved static entities. Unresolved expressions remain in JSON because deleting them would hide analysis uncertainty. Users can:
 
 - pass `--resolved-only` for concise text output;
 - use the basic report instead of the expert unresolved-expression table;

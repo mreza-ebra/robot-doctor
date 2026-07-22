@@ -19,7 +19,7 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.3.0"},
+    "schema_version": {"const": "1.4.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
     "provenance": {"$ref": "#/$defs/provenance"},
@@ -433,7 +433,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "id", "name", "namespace", "package", "executable", "executables", "class", "origin",
+        "id", "name", "namespace", "package", "executable", "executables", "class", "origin", "deployment_scope", "launch_condition",
         "definition_id", "source_file", "line", "lifecycle", "active", "resolved", "fact_type",
         "confidence", "evidence", "parameters", "publishers", "subscriptions", "service_servers",
         "service_clients", "action_servers", "action_clients"
@@ -447,6 +447,8 @@
         "executables": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "class": {"$ref": "#/$defs/nullableString"},
         "origin": {"enum": ["source", "source_scope", "launch"]},
+        "deployment_scope": {"enum": ["production", "test", "example"]},
+        "launch_condition": {"$ref": "#/$defs/nullableString"},
         "definition_id": {"$ref": "#/$defs/nullableString"},
         "source_file": {"type": "string"},
         "line": {"$ref": "#/$defs/nullableInteger"},
@@ -468,10 +470,11 @@
     "topic": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "types", "publishers", "subscribers", "fact_type", "confidence", "evidence"],
+      "required": ["name", "types", "deployment_scopes", "publishers", "subscribers", "fact_type", "confidence", "evidence"],
       "properties": {
         "name": {"type": "string"},
         "types": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "deployment_scopes": {"type": "array", "items": {"enum": ["production", "test", "example"]}, "uniqueItems": true},
         "publishers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
         "subscribers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
         "fact_type": {"const": "detected"},
@@ -482,10 +485,11 @@
     "serviceActionGraph": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "types", "servers", "clients", "fact_type", "confidence", "evidence"],
+      "required": ["name", "types", "deployment_scopes", "servers", "clients", "fact_type", "confidence", "evidence"],
       "properties": {
         "name": {"type": "string"},
         "types": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "deployment_scopes": {"type": "array", "items": {"enum": ["production", "test", "example"]}, "uniqueItems": true},
         "servers": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
         "clients": {"type": "array", "items": {"$ref": "#/$defs/topicEndpoint"}},
         "fact_type": {"const": "detected"},
@@ -577,11 +581,22 @@
     "summary": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["packages", "launch_files", "nodes", "topics", "services", "actions", "resolved_entities", "unresolved_entities", "skipped_files", "diagnostics"],
+      "required": ["packages", "launch_files", "nodes", "architecture_nodes_total", "node_scopes", "topics", "services", "actions", "resolved_entities", "unresolved_entities", "skipped_files", "diagnostics"],
       "properties": {
         "packages": {"type": "integer", "minimum": 0},
         "launch_files": {"type": "integer", "minimum": 0},
         "nodes": {"type": "integer", "minimum": 0},
+        "architecture_nodes_total": {"type": "integer", "minimum": 0},
+        "node_scopes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["production", "test", "example"],
+          "properties": {
+            "production": {"type": "integer", "minimum": 0},
+            "test": {"type": "integer", "minimum": 0},
+            "example": {"type": "integer", "minimum": 0}
+          }
+        },
         "topics": {"type": "integer", "minimum": 0},
         "services": {"type": "integer", "minimum": 0},
         "actions": {"type": "integer", "minimum": 0},

@@ -2,6 +2,15 @@
 
 All notable changes to Robot Doctor are documented here. Versions follow Semantic Versioning.
 
+## [Unreleased]
+
+### Changed
+
+- Separate production, test, and example architecture entities in JSON, HTML, and Markdown reports.
+- Count active architecture nodes consistently while retaining the total definition/instance count.
+- Require resolved production launch instances before escalating interface conflicts to errors; test-only graph entities no longer generate production-health findings.
+- Ignore non-literal C++ `Node(...)` expressions and remove the broad `setup.py` entry-point fallback that produced function arguments and setup metadata as nodes or executables.
+
 ## [0.5.0] - 2026-07-22
 
 ### Added

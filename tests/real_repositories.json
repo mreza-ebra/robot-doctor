@@ -10,7 +10,7 @@
       "expected": {
         "packages": 4,
         "launch_files": 4,
-        "nodes": 3,
+        "nodes": 7,
         "topics": 19,
         "services": 6,
         "actions": 6,
@@ -26,7 +26,7 @@
       "expected": {
         "packages": 22,
         "launch_files": 0,
-        "nodes": 64,
+        "nodes": 72,
         "topics": 14,
         "services": 10,
         "actions": 15,
@@ -42,7 +42,7 @@
       "expected": {
         "packages": 21,
         "launch_files": 0,
-        "nodes": 99,
+        "nodes": 95,
         "topics": 19,
         "services": 19,
         "actions": 4,
@@ -58,7 +58,7 @@
       "expected": {
         "packages": 41,
         "launch_files": 12,
-        "nodes": 83,
+        "nodes": 123,
         "topics": 36,
         "services": 43,
         "actions": 15,
@@ -74,7 +74,7 @@
       "expected": {
         "packages": 11,
         "launch_files": 1,
-        "nodes": 50,
+        "nodes": 58,
         "topics": 4,
         "services": 47,
         "actions": 0,
@@ -91,7 +91,7 @@
       "expected": {
         "packages": 95,
         "launch_files": 13,
-        "nodes": 296,
+        "nodes": 348,
         "topics": 71,
         "services": 119,
         "actions": 34,

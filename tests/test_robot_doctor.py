@@ -265,6 +265,125 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertIn("ros2 interface show example_interfaces/action/Fibonacci", mismatch_commands["RD206"])
         self.assertNotIn("<interface-type>", "\n".join(mismatch_commands.values()))
 
+    def test_test_entities_do_not_pollute_production_diagnostics_or_node_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "scope_probe"
+            self.write_minimal_package(package, "scope_probe")
+            (package / "src").mkdir()
+            (package / "src" / "production.cpp").write_text(
+                r'''
+#include <geometry_msgs/msg/polygon.hpp>
+#include <geometry_msgs/msg/polygon_stamped.hpp>
+#include <geometry_msgs/msg/twist.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+class ProductionNode : public rclcpp::Node
+{
+public:
+  ProductionNode() : Node("production_node")
+  {
+    publisher_ = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+    if (use_stamped_) {
+      stamped_ = create_subscription<geometry_msgs::msg::PolygonStamped>("footprint", 10, [](auto) {});
+    } else {
+      plain_ = create_subscription<geometry_msgs::msg::Polygon>("footprint", 10, [](auto) {});
+    }
+  }
+};
+''',
+                encoding="utf-8",
+            )
+            (package / "test").mkdir()
+            (package / "test" / "test_cmd_vel.cpp").write_text(
+                r'''
+#include <rclcpp/rclcpp.hpp>
+#include <sensor_msgs/msg/imu.hpp>
+#include <std_msgs/msg/string.hpp>
+
+void string_case(const rclcpp::NodeOptions & options)
+{
+  auto node = std::make_shared<rclcpp::Node>(options);
+  node->create_publisher<std_msgs::msg::String>("cmd_vel", 10);
+}
+
+void imu_case()
+{
+  auto node = rclcpp::Node(dwa_gen);
+  auto alternate = rclcpp::Node(accel);
+  node.create_publisher<sensor_msgs::msg::Imu>("cmd_vel", 10);
+}
+''',
+                encoding="utf-8",
+            )
+            (package / "setup.py").write_text(
+                "from setuptools import setup\nsetup(name='scope_probe', packages=['scope_probe'], install_requires=['setuptools'])\n",
+                encoding="utf-8",
+            )
+
+            data = ros_repo_discover.scan_repository(root)
+
+        report = data["packages"][0]
+        self.assertEqual({item["name"] for item in report["node_names"]}, {"production_node"})
+        self.assertEqual(report["executables"], [])
+        self.assertFalse(any(item["code"] == "RD201" and item.get("topic") == "cmd_vel" for item in data["diagnostics"]))
+        footprint = next(item for item in data["diagnostics"] if item["code"] == "RD201" and item.get("topic") == "footprint")
+        self.assertEqual(footprint["severity"], "warning")
+        self.assertIn("not proven to run together", footprint["message"])
+        active_nodes = [item for item in data["architecture"]["nodes"] if item["active"]]
+        self.assertEqual(data["summary"]["nodes"], len(active_nodes))
+        self.assertEqual(data["summary"]["architecture_nodes_total"], len(data["architecture"]["nodes"]))
+        self.assertEqual(sum(data["summary"]["node_scopes"].values()), data["summary"]["nodes"])
+        self.assertGreater(data["summary"]["node_scopes"]["production"], 0)
+        self.assertGreater(data["summary"]["node_scopes"]["test"], 0)
+        cmd_vel = next(item for item in data["architecture"]["topics"] if item["name"] == "cmd_vel")
+        self.assertEqual(set(cmd_vel["deployment_scopes"]), {"production", "test"})
+
+    def test_resolved_production_launch_proves_cross_node_type_conflict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "deployed_probe"
+            self.write_minimal_package(package, "deployed_probe")
+            (package / "src").mkdir()
+            (package / "src" / "publisher.cpp").write_text(
+                '#include <rclcpp/rclcpp.hpp>\n#include <std_msgs/msg/string.hpp>\n'
+                'class PublisherNode : public rclcpp::Node { public: PublisherNode() : Node("publisher_node") '
+                '{ create_publisher<std_msgs::msg::String>("shared", 10); } };\n',
+                encoding="utf-8",
+            )
+            (package / "src" / "subscriber.cpp").write_text(
+                '#include <rclcpp/rclcpp.hpp>\n#include <sensor_msgs/msg/imu.hpp>\n'
+                'class SubscriberNode : public rclcpp::Node { public: SubscriberNode() : Node("subscriber_node") '
+                '{ create_subscription<sensor_msgs::msg::Imu>("shared", 10, [](auto) {}); } };\n',
+                encoding="utf-8",
+            )
+            (package / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.8)\nproject(deployed_probe)\nfind_package(ament_cmake REQUIRED)\n"
+                "add_executable(publisher src/publisher.cpp)\nadd_executable(subscriber src/subscriber.cpp)\n"
+                "install(TARGETS publisher subscriber DESTINATION lib/${PROJECT_NAME})\nament_package()\n",
+                encoding="utf-8",
+            )
+            (package / "launch").mkdir()
+            launch_file = package / "launch" / "deployed.launch.xml"
+            launch_file.write_text(
+                '<launch><node pkg="deployed_probe" exec="publisher"/><node pkg="deployed_probe" exec="subscriber"/></launch>',
+                encoding="utf-8",
+            )
+
+            data = ros_repo_discover.scan_repository(root)
+            launch_file.write_text(
+                '<launch><node pkg="deployed_probe" exec="publisher" if="$(var enabled)"/>'
+                '<node pkg="deployed_probe" exec="subscriber" unless="$(var enabled)"/></launch>',
+                encoding="utf-8",
+            )
+            conditional_data = ros_repo_discover.scan_repository(root)
+
+        conflict = next(item for item in data["diagnostics"] if item["code"] == "RD201" and item.get("topic") == "shared")
+        self.assertEqual(conflict["severity"], "error")
+        self.assertEqual(conflict["deployment_scope"], "production")
+        conditional_conflict = next(item for item in conditional_data["diagnostics"] if item["code"] == "RD201" and item.get("topic") == "shared")
+        self.assertEqual(conditional_conflict["severity"], "warning")
+
     def test_scan_records_reproducibility_provenance(self):
         data = ros_repo_discover.scan_repository(FIXTURES / "python_robot")
         provenance = data["provenance"]
@@ -389,6 +508,10 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertTrue({"kind", "name", "type", "file", "line", "confidence", "resolved", "evidence"} <= set(definitions["finding"]["required"]))
         self.assertTrue({"file", "format", "package", "actions", "includes", "arguments", "confidence", "evidence"} <= set(definitions["launchFile"]["required"]))
         self.assertTrue({"id", "name", "namespace", "package", "origin", "active", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "parameters", "confidence", "evidence"} <= set(definitions["node"]["required"]))
+        self.assertIn("deployment_scope", definitions["node"]["required"])
+        self.assertIn("launch_condition", definitions["node"]["required"])
+        self.assertIn("deployment_scopes", definitions["topic"]["required"])
+        self.assertTrue({"architecture_nodes_total", "node_scopes"} <= set(definitions["summary"]["required"]))
         self.assertIn("remediation", definitions["diagnostic"]["required"])
         self.assertEqual(definitions["diagnostic"]["properties"]["remediation"]["properties"]["patch_hint"]["$ref"], "#/$defs/nullableString")
 

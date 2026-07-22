@@ -200,13 +200,17 @@ def architecture_diagram(data: dict[str, Any]) -> str:
 
 
 def node_graph_diagram(data: dict[str, Any], limit: int = 35) -> str:
-    active_nodes = [item for item in data["architecture"]["nodes"] if item.get("active")]
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+    active_nodes = sorted(
+        (item for item in data["architecture"]["nodes"] if item.get("active")),
+        key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("name") or ""),
+    )
     lines = ["```mermaid", "flowchart LR"]
     edge_count = 0
     for node in active_nodes:
         node_id = slug(node["id"])
         node_label = (node.get("namespace") or "") + "/" + (node.get("name") or node.get("executable") or "unresolved")
-        lines.append(f'  {node_id}["{node_label.replace("//", "/")}\\n{node.get("package") or "external"}"]')
+        lines.append(f'  {node_id}["{node_label.replace("//", "/")}\\n{node.get("package") or "external"} · {node.get("deployment_scope") or "production"}"]')
         for key, direction, shape in (
             ("publishers", "out", "topic"),
             ("subscriptions", "in", "topic"),
@@ -235,9 +239,14 @@ def node_graph_diagram(data: dict[str, Any], limit: int = 35) -> str:
 
 def node_rows(data: dict[str, Any]) -> list[list[Any]]:
     rows = []
-    for node in data["architecture"]["nodes"]:
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+    nodes = sorted(
+        data["architecture"]["nodes"],
+        key=lambda item: (not item.get("active"), scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("name") or ""),
+    )
+    for node in nodes:
         endpoints = sum(1 for key in ("publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients") for item in node.get(key, []) if item.get("resolved"))
-        rows.append([node.get("package"), node.get("name") or "<unresolved>", node.get("namespace"), node.get("executable"), node.get("origin"), node.get("active"), endpoints, len([item for item in node.get("parameters", []) if item.get("effective")]), certainty(node)])
+        rows.append([node.get("package"), node.get("name") or "<unresolved>", node.get("namespace"), node.get("executable"), node.get("origin"), node.get("deployment_scope"), node.get("active"), endpoints, len([item for item in node.get("parameters", []) if item.get("effective")]), certainty(node)])
     return rows
 
 
@@ -359,7 +368,14 @@ def modification_rows(data: dict[str, Any]) -> list[list[Any]]:
 def factual_scope(data: dict[str, Any]) -> str:
     if data["package_count"] == 0:
         return "No ROS 2 packages were detected. The document intentionally does not infer a robot architecture from unrelated files."
-    return f"Static analysis detected {data['summary']['packages']} package(s), {data['summary']['launch_files']} launch file(s), {data['summary']['nodes']} node declaration(s), and {data['summary']['topics']} resolved topic(s)."
+    scopes = data["summary"].get("node_scopes") or {}
+    return f"Static analysis detected {data['summary']['packages']} package(s), {data['summary']['launch_files']} launch file(s), {data['summary']['nodes']} active architecture node(s) ({scopes.get('production', 0)} production, {scopes.get('example', 0)} example, {scopes.get('test', 0)} test), and {data['summary']['topics']} resolved topic(s)."
+
+
+def summary_rows(summary: dict[str, Any]) -> list[list[Any]]:
+    rows = [[key.replace("_", " ").title(), value] for key, value in summary.items() if key not in {"diagnostics", "node_scopes"}]
+    rows.extend([f"Active {scope.title()} Nodes", count] for scope, count in summary.get("node_scopes", {}).items())
+    return rows
 
 
 def basic_document(root: Path, data: dict[str, Any]) -> str:
@@ -373,7 +389,7 @@ def basic_document(root: Path, data: dict[str, Any]) -> str:
 
 ## What Was Found
 
-{md_table(['Item', 'Count'], [[key.replace('_', ' ').title(), value] for key, value in summary.items() if key != 'diagnostics'])}
+{md_table(['Item', 'Count'], summary_rows(summary))}
 
 {md_table(['Diagnostic severity', 'Count'], health)}
 
@@ -391,7 +407,7 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 ## Main Nodes
 
-{md_table(['Package', 'Node', 'Namespace', 'Executable', 'Origin', 'Active', 'Interfaces', 'Effective parameters', 'Certainty'], node_rows(data)[:15])}
+{md_table(['Package', 'Node', 'Namespace', 'Executable', 'Origin', 'Scope', 'Active', 'Interfaces', 'Effective parameters', 'Certainty'], node_rows(data)[:15])}
 
 ## Sensors And Inputs
 
@@ -448,7 +464,7 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 
 {node_graph_diagram(data)}
 
-{md_table(['Package', 'Node', 'Namespace', 'Executable', 'Origin', 'Active', 'Interfaces', 'Effective parameters', 'Certainty'], node_rows(data))}
+{md_table(['Package', 'Node', 'Namespace', 'Executable', 'Origin', 'Scope', 'Active', 'Interfaces', 'Effective parameters', 'Certainty'], node_rows(data))}
 
 ### Publishers
 
@@ -553,7 +569,7 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 
 {node_graph_diagram(data, limit=80)}
 
-{md_table(['Package', 'Node', 'Namespace', 'Executable', 'Origin', 'Active', 'Interfaces', 'Effective parameters', 'Certainty'], node_rows(data))}
+{md_table(['Package', 'Node', 'Namespace', 'Executable', 'Origin', 'Scope', 'Active', 'Interfaces', 'Effective parameters', 'Certainty'], node_rows(data))}
 
 ### Publishers
 

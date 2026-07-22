@@ -30,8 +30,8 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.3.0"
-SCANNER_VERSION = "0.5.0"
+SCHEMA_VERSION = "1.4.0"
+SCANNER_VERSION = "0.6.0.dev0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
     ".hg",
@@ -918,6 +918,8 @@ def scan_cpp_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, An
     node_pattern = re.compile(r"(?:(?:rclcpp|rclcpp_lifecycle)::)?(?:Lifecycle)?Node\s*\(\s*([^,\)]+)")
     for match in node_pattern.finditer(text):
         name, confidence, dynamic = cpp_value(match.group(1))
+        if dynamic:
+            continue
         items["node_names"].append(
             finding(
                 "node_name",
@@ -928,7 +930,7 @@ def scan_cpp_source(path: Path, root: Path) -> tuple[dict[str, list[dict[str, An
                 "cpp_call_parser",
                 match.group(0),
                 confidence=confidence,
-                resolved=not dynamic,
+                resolved=True,
                 lifecycle="LifecycleNode" in match.group(0),
                 class_name=enclosing_class(match.start()),
             )
@@ -1337,9 +1339,6 @@ def scan_python_setup(path: Path, root: Path) -> list[dict[str, Any]]:
                                 name = entry.value.split("=", 1)[0].strip()
                                 target = entry.value.split("=", 1)[1].strip()
                                 results.append(finding("executable", name, "python_entry_point", rel_file, entry.lineno, "python_ast", entry.value, target=target))
-    if not results:
-        for match in re.finditer(r"['\"]([^'\"=]+)\s*=\s*[^'\"]+['\"]", text):
-            results.append(finding("executable", match.group(1).strip(), "python_entry_point", rel_file, line_number(text, match.start()), "setup_regex", match.group(0), confidence=0.72, target=match.group(0).split("=", 1)[1].strip(" '\"")))
     return unique_findings(results)
 
 
@@ -2161,6 +2160,43 @@ COMMUNICATION_KEYS = (
     "action_clients",
 )
 
+DEPLOYMENT_SCOPES = ("production", "test", "example")
+TEST_PATH_PARTS = {"test", "tests", "testing", "gtest", "bench", "benchmark", "benchmarks"}
+EXAMPLE_PATH_PARTS = {"example", "examples", "demo", "demos", "tutorial", "tutorials"}
+
+
+def deployment_scope(file: str | None, package_name: str | None = None) -> str:
+    parts = [part.casefold() for part in re.split(r"[/\\]+", file or "") if part]
+    filename = parts[-1] if parts else ""
+    package = (package_name or "").casefold().replace("-", "_")
+    if (
+        any(part in TEST_PATH_PARTS for part in parts)
+        or filename.startswith("test_")
+        or re.search(r"(?:^|[_-])test(?:[_-]|\.)", filename)
+        or re.search(r"(?:^|_)test(?:s|ing)?(?:_|$)", package)
+        or package.startswith(("test_", "testing_"))
+        or package.endswith(("_test", "_tests", "_testing"))
+        or "_system_tests" in package
+    ):
+        return "test"
+    if (
+        any(part in EXAMPLE_PATH_PARTS for part in parts)
+        or re.search(r"(?:^|_)(?:examples?|demos?|tutorials?)(?:_|$)", package)
+        or package.startswith(("example_", "examples_", "demo_", "tutorial_"))
+        or package.endswith(("_example", "_examples", "_demo", "_demos", "_tutorial", "_tutorials"))
+    ):
+        return "example"
+    return "production"
+
+
+def combined_deployment_scope(*scopes: str | None) -> str:
+    values = {scope for scope in scopes if scope}
+    if "test" in values:
+        return "test"
+    if "example" in values:
+        return "example"
+    return "production"
+
 
 def node_class(item: dict[str, Any]) -> str | None:
     return item.get("class") or item.get("class_name")
@@ -2195,6 +2231,8 @@ def source_node_definitions(package_reports: list[dict[str, Any]]) -> list[dict[
                     "executables": [],
                     "class": class_name,
                     "origin": "source",
+                    "deployment_scope": deployment_scope(item["file"], package_name),
+                    "launch_condition": None,
                     "definition_id": None,
                     "source_file": item["file"],
                     "line": item.get("line"),
@@ -2212,11 +2250,17 @@ def source_node_definitions(package_reports: list[dict[str, Any]]) -> list[dict[
 
         def candidate_node(entity: dict[str, Any]) -> dict[str, Any]:
             class_name = node_class(entity)
-            candidates = [item for item in package_nodes if class_name and item.get("class") == class_name]
+            entity_scope = deployment_scope(entity["file"], package_name)
+            candidates = [
+                item
+                for item in package_nodes
+                if class_name and item.get("class") == class_name and item.get("deployment_scope") == entity_scope
+            ]
+            same_file_candidates = [item for item in candidates if item["source_file"] == entity["file"]]
+            if same_file_candidates:
+                candidates = same_file_candidates
             if not candidates:
                 candidates = [item for item in package_nodes if item["source_file"] == entity["file"]]
-            if not candidates and len(package_nodes) == 1:
-                candidates = package_nodes
             if candidates:
                 return candidates[0]
             if entity["file"] not in synthetic_by_file:
@@ -2229,6 +2273,8 @@ def source_node_definitions(package_reports: list[dict[str, Any]]) -> list[dict[
                     "executables": [],
                     "class": class_name,
                     "origin": "source_scope",
+                    "deployment_scope": deployment_scope(entity["file"], package_name),
+                    "launch_condition": None,
                     "definition_id": None,
                     "source_file": entity["file"],
                     "line": entity.get("line"),
@@ -2413,6 +2459,11 @@ def build_node_architecture(
                 "executables": [action.get("executable")] if action.get("executable") else [],
                 "class": (definition or {}).get("class"),
                 "origin": "launch",
+                "deployment_scope": combined_deployment_scope(
+                    deployment_scope(launch["file"], launch.get("package")),
+                    (definition or {}).get("deployment_scope"),
+                ),
+                "launch_condition": action.get("condition"),
                 "definition_id": (definition or {}).get("id"),
                 "source_file": launch["file"],
                 "line": action.get("line"),
@@ -2456,6 +2507,7 @@ def build_node_architecture(
 
 def communication_architecture(nodes: list[dict[str, Any]], left_key: str, right_key: str, left_label: str, right_label: str) -> list[dict[str, Any]]:
     grouped: dict[str, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: {left_label: [], right_label: []})
+    scopes_by_node_id = {node["id"]: node.get("deployment_scope", "production") for node in nodes}
     for node in nodes:
         if not node.get("active"):
             continue
@@ -2467,7 +2519,18 @@ def communication_architecture(nodes: list[dict[str, Any]], left_key: str, right
     for name, endpoints in sorted(grouped.items()):
         types = sorted({item["type"] for values in endpoints.values() for item in values if item.get("type")})
         evidence_items = [item["evidence"][0] for values in endpoints.values() for item in values]
-        results.append({"name": name, "types": types, **endpoints, "fact_type": "detected", "confidence": min((item["confidence"] for values in endpoints.values() for item in values), default=0.0), "evidence": evidence_items})
+        node_scopes = {scopes_by_node_id.get(endpoint.get("node_id"), "production") for values in endpoints.values() for endpoint in values}
+        results.append(
+            {
+                "name": name,
+                "types": types,
+                "deployment_scopes": sorted(node_scopes),
+                **endpoints,
+                "fact_type": "detected",
+                "confidence": min((item["confidence"] for values in endpoints.values() for item in values), default=0.0),
+                "evidence": evidence_items,
+            }
+        )
     return results
 
 
@@ -2567,72 +2630,128 @@ def run_diagnostics(
             diagnostics.append(diagnostic("RD104", "warning", "CMake executable may not be installed", f"Target '{target}' is created but was not found in install(TARGETS ...).", executable["evidence"] if executable else package["evidence"], 0.9, package=package["name"]))
     nodes_by_id = {node["id"]: node for node in data["architecture"]["nodes"]}
 
-    def endpoints_share_deployment(endpoint_groups: list[list[dict[str, Any]]]) -> bool:
-        endpoints = [endpoint for group in endpoint_groups for endpoint in group]
-        types_by_node: dict[str, set[str]] = defaultdict(set)
-        types_by_launch: dict[str, set[str]] = defaultdict(set)
-        for endpoint in endpoints:
+    def endpoint_scope(endpoint: dict[str, Any]) -> str:
+        return nodes_by_id.get(endpoint.get("node_id"), {}).get("deployment_scope", "production")
+
+    def diagnostic_endpoint_groups(endpoint_groups: list[list[dict[str, Any]]]) -> tuple[list[list[dict[str, Any]]], str | None]:
+        production = [[endpoint for endpoint in group if endpoint_scope(endpoint) == "production"] for group in endpoint_groups]
+        if any(production):
+            return production, "production"
+        examples = [[endpoint for endpoint in group if endpoint_scope(endpoint) == "example"] for group in endpoint_groups]
+        if any(examples):
+            return examples, "example"
+        return [[] for _ in endpoint_groups], None
+
+    def endpoint_types(endpoint_groups: list[list[dict[str, Any]]]) -> list[str]:
+        return sorted({endpoint["type"] for group in endpoint_groups for endpoint in group if endpoint.get("type")})
+
+    def endpoint_evidence(endpoint_groups: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
+        return [item for group in endpoint_groups for endpoint in group for item in endpoint.get("evidence", [])]
+
+    def has_type_mismatch(types: list[str]) -> bool:
+        qualified_types = {type_name for type_name in types if "/" in type_name}
+        type_basenames = {re.split(r"[/.:]", type_name)[-1] for type_name in types}
+        return len(qualified_types) > 1 or (not qualified_types and len(type_basenames) > 1)
+
+    def endpoints_share_deployment(endpoint_groups: list[list[dict[str, Any]]], scope: str | None) -> bool:
+        if scope != "production":
+            return False
+        types_by_launch_node: dict[str, dict[str, set[str]]] = defaultdict(lambda: defaultdict(set))
+        for endpoint in (endpoint for group in endpoint_groups for endpoint in group):
             node_id = endpoint.get("node_id")
             type_name = endpoint.get("type")
-            if not node_id or not type_name:
-                continue
-            types_by_node[node_id].add(type_name)
             node = nodes_by_id.get(node_id, {})
-            if node.get("origin") == "launch" and node.get("source_file"):
-                types_by_launch[node["source_file"]].add(type_name)
-        return any(len(types) > 1 for types in types_by_node.values()) or any(len(types) > 1 for types in types_by_launch.values())
+            if (
+                not node_id
+                or not type_name
+                or node.get("origin") != "launch"
+                or not node.get("resolved")
+                or node.get("deployment_scope") != "production"
+                or node.get("launch_condition")
+                or not node.get("source_file")
+            ):
+                continue
+            types_by_launch_node[node["source_file"]][node_id].add(type_name)
+        return any(
+            len(types_by_node) > 1 and len({type_name for types in types_by_node.values() for type_name in types}) > 1
+            for types_by_node in types_by_launch_node.values()
+        )
+
+    def endpoints_share_launch(endpoint_pair: list[dict[str, Any]]) -> bool:
+        launch_nodes: dict[str, set[str]] = defaultdict(set)
+        for endpoint in endpoint_pair:
+            node = nodes_by_id.get(endpoint.get("node_id"), {})
+            if (
+                node.get("origin") == "launch"
+                and node.get("resolved")
+                and node.get("deployment_scope") == "production"
+                and not node.get("launch_condition")
+                and node.get("source_file")
+            ):
+                launch_nodes[node["source_file"]].add(node["id"])
+        return any(len(node_ids) > 1 for node_ids in launch_nodes.values())
 
     for topic in data["architecture"]["topics"]:
-        qualified_types = {type_name for type_name in topic["types"] if "/" in type_name}
-        type_basenames = {re.split(r"[/.:]", type_name)[-1] for type_name in topic["types"]}
-        has_type_mismatch = len(qualified_types) > 1 or (not qualified_types and len(type_basenames) > 1)
-        if has_type_mismatch:
-            deployed_together = endpoints_share_deployment([topic["publishers"], topic["subscribers"]])
-            diagnostics.append(diagnostic("RD201", "error" if deployed_together else "warning", "Topic type mismatch", f"Topic '{topic['name']}' uses multiple static types: {', '.join(topic['types'])}." + ("" if deployed_together else " The endpoints are not proven to run together."), topic["evidence"], 0.96 if deployed_together else 0.72, topic=topic["name"], _remediation_context={"interface_types": topic["types"]}))
-        if not topic["publishers"] or not topic["subscribers"]:
-            missing_side = "publisher" if not topic["publishers"] else "subscriber"
-            diagnostics.append(diagnostic("RD202", "info", "Orphan topic endpoint", f"Topic '{topic['name']}' has no statically detected {missing_side}. Runtime or external nodes may provide it.", topic["evidence"], 0.62, topic=topic["name"]))
-        for publisher in topic["publishers"]:
-            for subscriber in topic["subscribers"]:
+        endpoint_groups, scope = diagnostic_endpoint_groups([topic["publishers"], topic["subscribers"]])
+        if scope is None:
+            continue
+        publishers, subscribers = endpoint_groups
+        types = endpoint_types(endpoint_groups)
+        selected_evidence = endpoint_evidence(endpoint_groups)
+        if has_type_mismatch(types):
+            deployed_together = endpoints_share_deployment(endpoint_groups, scope)
+            diagnostics.append(diagnostic("RD201", "error" if deployed_together else "warning", "Topic type mismatch", f"Topic '{topic['name']}' uses multiple static types in {scope} scope: {', '.join(types)}." + ("" if deployed_together else " The endpoints are not proven to run together."), selected_evidence, 0.96 if deployed_together else 0.72, topic=topic["name"], deployment_scope=scope, _remediation_context={"interface_types": types}))
+        if not publishers or not subscribers:
+            missing_side = "publisher" if not publishers else "subscriber"
+            diagnostics.append(diagnostic("RD202", "info", "Orphan topic endpoint", f"Topic '{topic['name']}' has no statically detected {scope} {missing_side}. Runtime or external nodes may provide it.", selected_evidence, 0.62, topic=topic["name"], deployment_scope=scope))
+        for publisher in publishers:
+            for subscriber in subscribers:
                 pub_qos = publisher.get("qos") or {}
                 sub_qos = subscriber.get("qos") or {}
                 incompatible = pub_qos.get("reliability") == "best_effort" and sub_qos.get("reliability") == "reliable"
                 incompatible = incompatible or (pub_qos.get("durability") == "volatile" and sub_qos.get("durability") == "transient_local")
                 if incompatible:
-                    diagnostics.append(diagnostic("RD203", "error", "Potential QoS incompatibility", f"Publisher and subscriber on '{topic['name']}' request incompatible QoS policies.", publisher["evidence"] + subscriber["evidence"], 0.9, topic=topic["name"]))
+                    deployed_together = endpoints_share_launch([publisher, subscriber])
+                    diagnostics.append(diagnostic("RD203", "error" if deployed_together else "warning", "Potential QoS incompatibility", f"Publisher and subscriber on '{topic['name']}' request incompatible QoS policies." + ("" if deployed_together else " The endpoints are not proven to run together."), publisher["evidence"] + subscriber["evidence"], 0.9 if deployed_together else 0.7, topic=topic["name"], deployment_scope=scope))
     graph_checks = [
         ("services", "servers", "clients", "service", "RD204", "RD205"),
         ("actions", "servers", "clients", "action", "RD206", "RD207"),
     ]
     for graph_name, server_key, client_key, label, mismatch_code, orphan_code in graph_checks:
         for interface in data["architecture"][graph_name]:
-            qualified_types = {type_name for type_name in interface["types"] if "/" in type_name}
-            type_basenames = {re.split(r"[/.:]", type_name)[-1] for type_name in interface["types"]}
-            if len(qualified_types) > 1 or (not qualified_types and len(type_basenames) > 1):
-                deployed_together = endpoints_share_deployment([interface[server_key], interface[client_key]])
+            endpoint_groups, scope = diagnostic_endpoint_groups([interface[server_key], interface[client_key]])
+            if scope is None:
+                continue
+            servers, clients = endpoint_groups
+            types = endpoint_types(endpoint_groups)
+            selected_evidence = endpoint_evidence(endpoint_groups)
+            if has_type_mismatch(types):
+                deployed_together = endpoints_share_deployment(endpoint_groups, scope)
                 diagnostics.append(
                     diagnostic(
                         mismatch_code,
                         "error" if deployed_together else "warning",
                         f"{label.title()} type mismatch",
-                        f"{label.title()} '{interface['name']}' uses multiple static types: {', '.join(interface['types'])}." + ("" if deployed_together else " The endpoints are not proven to run together."),
-                        interface["evidence"],
+                        f"{label.title()} '{interface['name']}' uses multiple static types in {scope} scope: {', '.join(types)}." + ("" if deployed_together else " The endpoints are not proven to run together."),
+                        selected_evidence,
                         0.96 if deployed_together else 0.72,
                         interface=interface["name"],
-                        _remediation_context={"interface_types": interface["types"]},
+                        deployment_scope=scope,
+                        _remediation_context={"interface_types": types},
                     )
                 )
-            if not interface[server_key] or not interface[client_key]:
-                missing_side = "server" if not interface[server_key] else "client"
+            if not servers or not clients:
+                missing_side = "server" if not servers else "client"
                 diagnostics.append(
                     diagnostic(
                         orphan_code,
                         "info",
                         f"Orphan {label} endpoint",
-                        f"{label.title()} '{interface['name']}' has no statically detected {missing_side}. Runtime or external nodes may provide it.",
-                        interface["evidence"],
+                        f"{label.title()} '{interface['name']}' has no statically detected {scope} {missing_side}. Runtime or external nodes may provide it.",
+                        selected_evidence,
                         0.62,
                         interface=interface["name"],
+                        deployment_scope=scope,
                     )
                 )
     root = Path(data["repository"]["path"])
@@ -2987,10 +3106,14 @@ def _scan_repository(root: Path) -> dict[str, Any]:
         severities[item["severity"]] += 1
     inventory_keys = ("executables", "node_names", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "declared_parameters")
     inventory_entities = [item for report in reports for key in inventory_keys for item in report[key]]
+    active_nodes = [node for node in nodes if node.get("active")]
+    node_scopes = {scope: sum(node.get("deployment_scope") == scope for node in active_nodes) for scope in DEPLOYMENT_SCOPES}
     data["summary"] = {
         "packages": len(reports),
         "launch_files": len(launch_files),
-        "nodes": sum(len(report["node_names"]) + len(report["launched_nodes"]) for report in reports),
+        "nodes": len(active_nodes),
+        "architecture_nodes_total": len(nodes),
+        "node_scopes": node_scopes,
         "topics": len(topics),
         "services": sum(len(report["service_servers"]) + len(report["service_clients"]) for report in reports),
         "actions": sum(len(report["action_servers"]) + len(report["action_clients"]) for report in reports),
