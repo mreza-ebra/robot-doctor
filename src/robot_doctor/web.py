@@ -195,14 +195,11 @@ def architecture_visual(data: dict[str, Any]) -> str:
     def endpoint_count(node: dict[str, Any]) -> int:
         return sum(len(node.get(key, [])) for key in endpoint_models)
 
-    all_nodes = [
-        node
-        for node in data.get("architecture", {}).get("nodes", [])
-        if node.get("active") and (node.get("name") or node.get("executable"))
-    ]
+    active_nodes = [node for node in data.get("architecture", {}).get("nodes", []) if node.get("active")]
+    graph_nodes = [node for node in active_nodes if node.get("name") or node.get("executable")]
     scope_rank = {"production": 0, "example": 1, "test": 2}
     nodes = sorted(
-        all_nodes,
+        graph_nodes,
         key=lambda node: (scope_rank.get(str(node.get("deployment_scope")), 3), -endpoint_count(node), str(node.get("package") or ""), str(node.get("name") or "")),
     )[:8]
     candidate_edges: list[tuple[str, tuple[str, str], str]] = []
@@ -274,9 +271,9 @@ def architecture_visual(data: dict[str, Any]) -> str:
             f'<text x="700" y="{y + 14}" text-anchor="middle" font-size="10" fill="#596579">{kind}</text></g>'
         )
     if not nodes:
-        node_svg = '<text x="410" y="150" text-anchor="middle" font-size="15" fill="#596579">No active source or launched nodes were detected.</text>'
-    scope_counts = {scope: sum(node.get("deployment_scope") == scope for node in all_nodes) for scope in ("production", "example", "test")}
-    note = f"Showing {len(nodes)} of {len(all_nodes)} active nodes ({scope_counts['production']} production, {scope_counts['example']} example, {scope_counts['test']} test) and {len(interfaces)} interfaces."
+        node_svg = '<text x="410" y="150" text-anchor="middle" font-size="15" fill="#596579">No graph-eligible source or launched nodes were detected.</text>'
+    scope_counts = {scope: sum(node.get("deployment_scope") == scope for node in graph_nodes) for scope in ("production", "example", "test")}
+    note = f"Showing {len(nodes)} of {len(graph_nodes)} graph-eligible nodes ({scope_counts['production']} production, {scope_counts['example']} example, {scope_counts['test']} test) from {len(active_nodes)} active nodes, with {len(interfaces)} interfaces."
     return (
         f'<svg class="diagram" role="img" aria-label="Node and interface topology" viewBox="0 0 830 {height}">'
         '<defs><marker id="topology-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#64748b"/></marker></defs>'

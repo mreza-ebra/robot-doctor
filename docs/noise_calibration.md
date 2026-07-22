@@ -6,12 +6,12 @@ The pinned 95-package ROS 2 workspace contains ROS 2 Examples, ROS 2 Demos, Move
 
 | Policy | Errors | Warnings | Notes |
 | --- | ---: | ---: | --- |
-| Previous behavior / `dependency_mode=all` | 0 | 164 | All inferred dependency references become warnings. |
-| Default / `dependency_mode=direct` | 0 | 38 | 126 indirect dependency guesses move to informational findings. |
+| Strict / `dependency_mode=all` | 0 | 118 | All non-test inferred dependency references become warnings. |
+| Default / `dependency_mode=direct` | 0 | 30 | 88 indirect dependency guesses remain informational findings. |
 
-The default warning set contains 32 direct dependency findings, three CMake install findings, one topic-type warning, one action-type warning, and one launch executable warning. Strict mode remains available for maintainers who want every inferred dependency elevated.
+The default warning set contains 26 direct dependency findings, one CMake install finding, one topic-type warning, one action-type warning, and one launch executable warning. The full default report contains 184 findings: 30 warnings and 154 informational findings. Strict mode remains available for maintainers who want every non-test inferred dependency elevated.
 
-The architecture contains 348 active nodes out of 351 total source definitions and launch instances: 104 production, 73 test, and 171 example nodes. Test-only topic, service, action, and QoS graph entities produce no production-health findings. Interface mismatches become errors only when distinct, unconditional, resolved production nodes appear in the same launch file.
+The architecture contains 348 active nodes out of 351 total source definitions and launch instances: 104 production, 73 test, and 171 example nodes. All 351 node IDs are unique. Test-only topic, service, action, QoS, dependency, and executable-install entities produce no production-health findings. Interface mismatches become errors only when distinct, unconditional, resolved production nodes appear in the same launch file.
 
 ## Unresolved Entities
 

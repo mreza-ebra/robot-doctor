@@ -291,6 +291,11 @@ class SelfServiceTests(unittest.TestCase):
         self.assertIn("probe_node", diagram)
         self.assertIn("status", diagram)
         self.assertIn("production", diagram)
+        self.assertIn("graph-eligible nodes", diagram)
+        active_nodes = [item for item in data["architecture"]["nodes"] if item.get("active")]
+        graph_nodes = [item for item in active_nodes if item.get("name") or item.get("executable")]
+        self.assertIn(f"of {len(graph_nodes)} graph-eligible nodes", diagram)
+        self.assertIn(f"from {len(active_nodes)} active nodes", diagram)
         self.assertNotIn("Detected package structure", diagram)
         self.assertIn("Active node scopes", rendered)
         self.assertIn("<th>Scope</th>", rendered)

@@ -10,6 +10,8 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Count active architecture nodes consistently while retaining the total definition/instance count.
 - Require resolved production launch instances before escalating interface conflicts to errors; test-only graph entities no longer generate production-health findings.
 - Ignore non-literal C++ `Node(...)` expressions and remove the broad `setup.py` entry-point fallback that produced function arguments and setup metadata as nodes or executables.
+- Make source node IDs unique per source occurrence and distinguish active nodes from graph-eligible named nodes in the topology UI.
+- Suppress RD101 and RD104 findings for dependencies, executables, and benchmarks detected only inside test scope.
 
 ## [0.5.0] - 2026-07-22
 

@@ -1292,7 +1292,32 @@ def scan_cpp_method_wrapper_invocations(path: Path, root: Path, models: dict[str
     return {key: unique_findings(value) for key, value in results.items()}
 
 
-def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], set[str], set[str]]:
+def cmake_testing_context(text: str, offset: int) -> bool:
+    stack: list[bool] = []
+    for match in re.finditer(r"(?im)^\s*(if|endif)\s*\(([^)]*)\)", text):
+        if match.start() >= offset:
+            break
+        if match.group(1).casefold() == "if":
+            inherited = stack[-1] if stack else False
+            condition = match.group(2).upper()
+            testing_guard = "BUILD_TESTING" in condition and not re.search(r"\bNOT\s+\$?\{?BUILD_TESTING\}?", condition)
+            stack.append(inherited or testing_guard)
+        elif stack:
+            stack.pop()
+    return stack[-1] if stack else False
+
+
+def cmake_entity_scope(text: str, offset: int, rel_file: str, name: str | None = None, sources: Iterable[str] = ()) -> str:
+    scopes = {deployment_scope(rel_file), deployment_scope(name)}
+    scopes.update(deployment_scope(source) for source in sources)
+    if cmake_testing_context(text, offset) or "test" in scopes:
+        return "test"
+    if "example" in scopes:
+        return "example"
+    return "production"
+
+
+def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], set[str]]:
     text = read_text(path)
     rel_file = relative(path, root)
     executables = []
@@ -1310,15 +1335,21 @@ def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], set[str], 
         block = extract_call_block(text, match.start())
         cmake_tokens = re.findall(r"[^\s\)]+", block[block.find("(") + 1 : block.rfind(")")])
         sources = [token.strip('"\'') for token in cmake_tokens[1:] if not token.startswith("$")]
-        executables.append(finding("executable", name, "cmake", rel_file, line_number(text, match.start()), "cmake_parser", block, sources=sources))
+        scope = cmake_entity_scope(text, match.start(), rel_file, name, sources)
+        executables.append(finding("executable", name, "cmake", rel_file, line_number(text, match.start()), "cmake_parser", block, sources=sources, deployment_scope=scope))
     installed = set()
     for match in re.finditer(r"\binstall\s*\(\s*TARGETS\s+([^\)]*)\)", text, re.DOTALL | re.IGNORECASE):
         before_destination = re.split(r"\b(?:DESTINATION|EXPORT|ARCHIVE|LIBRARY|RUNTIME|INCLUDES)\b", match.group(1), maxsplit=1, flags=re.IGNORECASE)[0]
         for token in re.findall(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_-]*", before_destination):
             variable = re.fullmatch(r"\$\{([^}]+)\}", token)
             installed.add(variables.get(variable.group(1), token) if variable else token)
-    dependencies = set(re.findall(r"\bfind_package\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)", text))
-    return executables, dependencies, {target for target in targets if target not in installed}
+    dependencies: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for match in re.finditer(r"\bfind_package\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)", text):
+        reference = match.group(1)
+        scope = cmake_entity_scope(text, match.start(), rel_file, reference)
+        extractor = "cmake_find_package" if scope == "production" else f"cmake_find_package_{scope}"
+        dependencies[reference].append(evidence(rel_file, line_number(text, match.start()), extractor, match.group(0)))
+    return executables, dict(dependencies), {target for target in targets if target not in installed}
 
 
 def scan_python_setup(path: Path, root: Path) -> list[dict[str, Any]]:
@@ -2172,7 +2203,7 @@ def deployment_scope(file: str | None, package_name: str | None = None) -> str:
     if (
         any(part in TEST_PATH_PARTS for part in parts)
         or filename.startswith("test_")
-        or re.search(r"(?:^|[_-])test(?:[_-]|\.)", filename)
+        or re.search(r"(?:^|[_-])(?:test|tests|testing|gtest|bench|benchmark)(?:[_-]|\.)", filename)
         or re.search(r"(?:^|_)test(?:s|ing)?(?:_|$)", package)
         or package.startswith(("test_", "testing_"))
         or package.endswith(("_test", "_tests", "_testing"))
@@ -2198,6 +2229,23 @@ def combined_deployment_scope(*scopes: str | None) -> str:
     return "production"
 
 
+def evidence_deployment_scope(evidence_items: Iterable[dict[str, Any]], package_name: str | None = None) -> str:
+    scopes = set()
+    for item in evidence_items:
+        extractor = str(item.get("extractor") or "")
+        if extractor.endswith("_test"):
+            scopes.add("test")
+        elif extractor.endswith("_example"):
+            scopes.add("example")
+        else:
+            scopes.add(deployment_scope(item.get("file"), package_name))
+    if "production" in scopes:
+        return "production"
+    if "example" in scopes:
+        return "example"
+    return "test" if "test" in scopes else deployment_scope(None, package_name)
+
+
 def node_class(item: dict[str, Any]) -> str | None:
     return item.get("class") or item.get("class_name")
 
@@ -2220,7 +2268,8 @@ def source_node_definitions(package_reports: list[dict[str, Any]]) -> list[dict[
         package_nodes = []
         for index, item in enumerate(report["node_names"]):
             class_name = node_class(item)
-            node_id = f"source:{package_name}:{class_name or item.get('name') or index}:{item['file']}"
+            source_position = item.get("line") if item.get("line") is not None else index
+            node_id = f"source:{package_name}:{class_name or item.get('name') or index}:{item['file']}:{source_position}:{index}"
             package_nodes.append(
                 {
                     "id": node_id,
@@ -2604,7 +2653,10 @@ def run_diagnostics(
                 continue
             dependency_evidence = report["reference_evidence"].get(name, package["evidence"])
             extractors = {item.get("extractor") for item in dependency_evidence}
-            direct_reference = "cmake_find_package" in extractors or any("launch" in str(extractor) for extractor in extractors)
+            scope = evidence_deployment_scope(dependency_evidence, package["name"])
+            if scope == "test":
+                continue
+            direct_reference = any(str(extractor).startswith("cmake_find_package") or "launch" in str(extractor) for extractor in extractors)
             warning = config.dependency_mode == "all" or direct_reference
             diagnostics.append(
                 diagnostic(
@@ -2618,6 +2670,7 @@ def run_diagnostics(
                     package=package["name"],
                     dependency=name,
                     direct_reference=direct_reference,
+                    deployment_scope=scope,
                 )
             )
         package_path = Path(data["repository"]["path"]) / package["path"]
@@ -2627,7 +2680,10 @@ def run_diagnostics(
             diagnostics.append(diagnostic("RD103", "error", "Missing Python package definition", f"ament_python package {package['name']} has no setup.py, setup.cfg, or pyproject.toml.", package["evidence"], 1.0, package=package["name"]))
         for target in sorted(uninstalled_targets.get(package["path"], set())):
             executable = next((item for item in report["executables"] if item["name"] == target), None)
-            diagnostics.append(diagnostic("RD104", "warning", "CMake executable may not be installed", f"Target '{target}' is created but was not found in install(TARGETS ...).", executable["evidence"] if executable else package["evidence"], 0.9, package=package["name"]))
+            scope = (executable or {}).get("deployment_scope") or deployment_scope(target, package["name"])
+            if scope == "test":
+                continue
+            diagnostics.append(diagnostic("RD104", "warning", "CMake executable may not be installed", f"Target '{target}' is created but was not found in install(TARGETS ...).", executable["evidence"] if executable else package["evidence"], 0.9, package=package["name"], deployment_scope=scope))
     nodes_by_id = {node["id"]: node for node in data["architecture"]["nodes"]}
 
     def endpoint_scope(endpoint: dict[str, Any]) -> str:
@@ -2992,8 +3048,8 @@ def _scan_repository(root: Path) -> dict[str, Any]:
             executables, references, uninstalled = scan_cmake(path, root)
             report["executables"].extend(executables)
             report["referenced_packages"].extend(references)
-            for reference in references:
-                report["reference_evidence"].setdefault(reference, []).append(evidence(rel_file, 1, "cmake_find_package", reference))
+            for reference, reference_items in references.items():
+                report["reference_evidence"].setdefault(reference, []).extend(reference_items)
             uninstalled_targets[package["path"]].update(uninstalled)
         elif path.name == "setup.py":
             report["executables"].extend(scan_python_setup(path, root))
@@ -3093,6 +3149,7 @@ def _scan_repository(root: Path) -> dict[str, Any]:
         "limitations": [
             "Static analysis cannot prove runtime names, substitutions, remappings, plugin loading, or external nodes.",
             "Orphan endpoint and dependency diagnostics may be satisfied by another repository or installed package.",
+            "Static source extraction cannot prove whether endpoints in mutually exclusive branches execute together; same-node type conflicts remain advisory unless distinct unconditional launch instances prove co-deployment.",
             "YAML launch parsing covers standard declarative ROS 2 forms but preserves unsupported dynamic expressions as unresolved.",
             "Runtime TF and QoS behavior should be confirmed on a running system.",
         ],

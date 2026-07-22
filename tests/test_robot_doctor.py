@@ -338,6 +338,57 @@ void imu_case()
         self.assertGreater(data["summary"]["node_scopes"]["test"], 0)
         cmd_vel = next(item for item in data["architecture"]["topics"] if item["name"] == "cmd_vel")
         self.assertEqual(set(cmd_vel["deployment_scopes"]), {"production", "test"})
+        self.assertTrue(any("mutually exclusive branches" in item for item in data["limitations"]))
+
+    def test_source_node_ids_are_unique_per_occurrence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "duplicate_nodes"
+            self.write_minimal_package(package, "duplicate_nodes")
+            (package / "src").mkdir()
+            (package / "src" / "duplicate.cpp").write_text(
+                '#include <rclcpp/rclcpp.hpp>\n'
+                'auto first = rclcpp::Node("dwa_gen");\n'
+                'auto second = rclcpp::Node("dwa_gen");\n',
+                encoding="utf-8",
+            )
+
+            data = ros_repo_discover.scan_repository(root)
+
+        node_ids = [item["id"] for item in data["architecture"]["nodes"]]
+        self.assertEqual(len(node_ids), len(set(node_ids)))
+        self.assertEqual([item["name"] for item in data["architecture"]["nodes"]].count("dwa_gen"), 2)
+
+    def test_test_only_cmake_dependencies_and_targets_do_not_warn(self):
+        self.assertTrue(ros_repo_discover.cmake_testing_context("if(BUILD_TESTING)\nadd_executable(test test.cpp)\n", 60))
+        self.assertFalse(ros_repo_discover.cmake_testing_context("if(NOT BUILD_TESTING)\nadd_executable(prod prod.cpp)\n", 64))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            package = root / "scoped_build"
+            self.write_minimal_package(package, "scoped_build")
+            (package / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.8)\nproject(scoped_build)\nfind_package(ament_cmake REQUIRED)\n"
+                "if(BUILD_TESTING)\n"
+                "  find_package(test_msgs REQUIRED)\n"
+                "  add_executable(dwa_gen test/dwa_gen.cpp)\n"
+                "  add_executable(benchmark_solver src/benchmark_solver.cpp)\n"
+                "endif()\n"
+                "find_package(geometry_msgs REQUIRED)\n"
+                "add_executable(prod_node src/prod_node.cpp)\n"
+                "ament_package()\n",
+                encoding="utf-8",
+            )
+
+            data = ros_repo_discover.scan_repository(root)
+
+        dependency_findings = [item for item in data["diagnostics"] if item["code"] == "RD101"]
+        install_findings = [item for item in data["diagnostics"] if item["code"] == "RD104"]
+        self.assertEqual({item["dependency"] for item in dependency_findings}, {"geometry_msgs"})
+        self.assertEqual({item["deployment_scope"] for item in dependency_findings}, {"production"})
+        self.assertEqual({item["remediation"]["patch_hint"] for item in install_findings}, {"install(TARGETS <target> DESTINATION lib/${PROJECT_NAME})"})
+        self.assertEqual({item["message"].split("'")[1] for item in install_findings}, {"prod_node"})
+        executable_scopes = {item["name"]: item["deployment_scope"] for item in data["packages"][0]["executables"]}
+        self.assertEqual(executable_scopes, {"dwa_gen": "test", "benchmark_solver": "test", "prod_node": "production"})
 
     def test_resolved_production_launch_proves_cross_node_type_conflict(self):
         with tempfile.TemporaryDirectory() as directory:
