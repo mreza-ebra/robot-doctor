@@ -80,7 +80,7 @@ python3 tools/robot_doctor_web.py
 
 ## Output Contract
 
-JSON output uses schema version `1.4.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. Architecture nodes and interfaces include `production`, `test`, or `example` deployment scope so test fixtures do not contaminate production diagnostics. The top-level sections are:
+JSON output uses schema version `1.5.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. Architecture nodes, interfaces, inferred roles, and modification points include `production`, `test`, or `example` deployment scope so test fixtures do not contaminate production guidance or diagnostics. The top-level sections are:
 
 - `packages`: source-backed package and entity inventories.
 - `configuration`: effective limits, diagnostic policy, and suppressed-diagnostic count.

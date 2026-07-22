@@ -338,6 +338,11 @@ void imu_case()
         self.assertGreater(data["summary"]["node_scopes"]["test"], 0)
         cmd_vel = next(item for item in data["architecture"]["topics"] if item["name"] == "cmd_vel")
         self.assertEqual(set(cmd_vel["deployment_scopes"]), {"production", "test"})
+        for key in ("sensors", "actuation", "algorithms"):
+            self.assertTrue(all(item.get("deployment_scope") in {"production", "test", "example"} for item in data["architecture"][key]))
+        self.assertTrue(any(item["deployment_scope"] == "test" for item in data["architecture"]["sensors"]))
+        self.assertTrue(any(item["deployment_scope"] == "test" for item in data["architecture"]["actuation"]))
+        self.assertTrue(all(item["deployment_scope"] in {"production", "test", "example"} for item in data["architecture"]["modification_points"]))
         self.assertTrue(any("mutually exclusive branches" in item for item in data["limitations"]))
 
     def test_source_node_ids_are_unique_per_occurrence(self):
@@ -378,6 +383,15 @@ void imu_case()
                 "ament_package()\n",
                 encoding="utf-8",
             )
+            system_package = root / "nav2_system_tests"
+            self.write_minimal_package(system_package, "nav2_system_tests")
+            (system_package / "CMakeLists.txt").write_text(
+                "cmake_minimum_required(VERSION 3.8)\nproject(nav2_system_tests)\n"
+                "find_package(ament_cmake REQUIRED)\nfind_package(rclcpp REQUIRED)\n"
+                "add_executable(dummy_controller_node src/dummy_controller_node.cpp)\n"
+                "add_executable(dummy_planner_node src/dummy_planner_node.cpp)\nament_package()\n",
+                encoding="utf-8",
+            )
 
             data = ros_repo_discover.scan_repository(root)
 
@@ -387,8 +401,12 @@ void imu_case()
         self.assertEqual({item["deployment_scope"] for item in dependency_findings}, {"production"})
         self.assertEqual({item["remediation"]["patch_hint"] for item in install_findings}, {"install(TARGETS <target> DESTINATION lib/${PROJECT_NAME})"})
         self.assertEqual({item["message"].split("'")[1] for item in install_findings}, {"prod_node"})
-        executable_scopes = {item["name"]: item["deployment_scope"] for item in data["packages"][0]["executables"]}
+        scoped_report = next(item for item in data["packages"] if item["package"]["name"] == "scoped_build")
+        system_report = next(item for item in data["packages"] if item["package"]["name"] == "nav2_system_tests")
+        executable_scopes = {item["name"]: item["deployment_scope"] for item in scoped_report["executables"]}
         self.assertEqual(executable_scopes, {"dwa_gen": "test", "benchmark_solver": "test", "prod_node": "production"})
+        self.assertEqual({item["deployment_scope"] for item in system_report["executables"]}, {"test"})
+        self.assertFalse(any(name in item["message"] for item in install_findings for name in ("dummy_controller_node", "dummy_planner_node")))
 
     def test_resolved_production_launch_proves_cross_node_type_conflict(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -563,6 +581,7 @@ void imu_case()
         self.assertIn("launch_condition", definitions["node"]["required"])
         self.assertIn("deployment_scopes", definitions["topic"]["required"])
         self.assertTrue({"architecture_nodes_total", "node_scopes"} <= set(definitions["summary"]["required"]))
+        self.assertIn("deployment_scope", definitions["modificationPoint"]["required"])
         self.assertIn("remediation", definitions["diagnostic"]["required"])
         self.assertEqual(definitions["diagnostic"]["properties"]["remediation"]["properties"]["patch_hint"]["$ref"], "#/$defs/nullableString")
 

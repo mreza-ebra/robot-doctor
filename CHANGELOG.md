@@ -12,6 +12,8 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Ignore non-literal C++ `Node(...)` expressions and remove the broad `setup.py` entry-point fallback that produced function arguments and setup metadata as nodes or executables.
 - Make source node IDs unique per source occurrence and distinguish active nodes from graph-eligible named nodes in the topology UI.
 - Suppress RD101 and RD104 findings for dependencies, executables, and benchmarks detected only inside test scope.
+- Scope inferred sensors, algorithms, actuation entries, and modification points, prioritizing production guidance in rendered views.
+- Classify CMake dependencies and targets with package identity so system-test packages cannot appear as production.
 
 ## [0.5.0] - 2026-07-22
 

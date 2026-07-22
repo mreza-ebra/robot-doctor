@@ -30,7 +30,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.4.0"
+SCHEMA_VERSION = "1.5.0"
 SCANNER_VERSION = "0.6.0.dev0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -1307,9 +1307,9 @@ def cmake_testing_context(text: str, offset: int) -> bool:
     return stack[-1] if stack else False
 
 
-def cmake_entity_scope(text: str, offset: int, rel_file: str, name: str | None = None, sources: Iterable[str] = ()) -> str:
-    scopes = {deployment_scope(rel_file), deployment_scope(name)}
-    scopes.update(deployment_scope(source) for source in sources)
+def cmake_entity_scope(text: str, offset: int, rel_file: str, package_name: str | None = None, name: str | None = None, sources: Iterable[str] = ()) -> str:
+    scopes = {deployment_scope(rel_file, package_name), deployment_scope(name, package_name)}
+    scopes.update(deployment_scope(source, package_name) for source in sources)
     if cmake_testing_context(text, offset) or "test" in scopes:
         return "test"
     if "example" in scopes:
@@ -1317,7 +1317,7 @@ def cmake_entity_scope(text: str, offset: int, rel_file: str, name: str | None =
     return "production"
 
 
-def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], set[str]]:
+def scan_cmake(path: Path, root: Path, package_name: str | None = None) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], set[str]]:
     text = read_text(path)
     rel_file = relative(path, root)
     executables = []
@@ -1335,7 +1335,7 @@ def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], dict[str, 
         block = extract_call_block(text, match.start())
         cmake_tokens = re.findall(r"[^\s\)]+", block[block.find("(") + 1 : block.rfind(")")])
         sources = [token.strip('"\'') for token in cmake_tokens[1:] if not token.startswith("$")]
-        scope = cmake_entity_scope(text, match.start(), rel_file, name, sources)
+        scope = cmake_entity_scope(text, match.start(), rel_file, package_name, name, sources)
         executables.append(finding("executable", name, "cmake", rel_file, line_number(text, match.start()), "cmake_parser", block, sources=sources, deployment_scope=scope))
     installed = set()
     for match in re.finditer(r"\binstall\s*\(\s*TARGETS\s+([^\)]*)\)", text, re.DOTALL | re.IGNORECASE):
@@ -1346,7 +1346,7 @@ def scan_cmake(path: Path, root: Path) -> tuple[list[dict[str, Any]], dict[str, 
     dependencies: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for match in re.finditer(r"\bfind_package\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)", text):
         reference = match.group(1)
-        scope = cmake_entity_scope(text, match.start(), rel_file, reference)
+        scope = cmake_entity_scope(text, match.start(), rel_file, package_name, reference)
         extractor = "cmake_find_package" if scope == "production" else f"cmake_find_package_{scope}"
         dependencies[reference].append(evidence(rel_file, line_number(text, match.start()), extractor, match.group(0)))
     return executables, dict(dependencies), {target for target in targets if target not in installed}
@@ -2584,7 +2584,7 @@ def communication_architecture(nodes: list[dict[str, Any]], left_key: str, right
 
 
 def infer_architecture(package_reports: list[dict[str, Any]], urdf_sensors: list[dict[str, Any]]) -> dict[str, Any]:
-    sensors = list(urdf_sensors)
+    sensors = [{**item, "deployment_scope": item.get("deployment_scope") or deployment_scope(item.get("file"), item.get("package"))} for item in urdf_sensors]
     actuators = []
     algorithms = []
     sensor_types = ("laserscan", "image", "camerainfo", "pointcloud", "imu", "navsat", "range", "fluidpressure", "magneticfield", "batterystate", "jointstate")
@@ -2594,34 +2594,49 @@ def infer_architecture(package_reports: list[dict[str, Any]], urdf_sensors: list
         for endpoint in report["publishers"] + report["subscriptions"]:
             combined = f"{endpoint.get('name') or ''} {endpoint.get('type') or ''}".lower()
             if any(token in combined for token in sensor_types):
-                sensors.append({**endpoint, "package": package_name, "role": "sensor data interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.78), 2)})
+                sensors.append({**endpoint, "package": package_name, "deployment_scope": deployment_scope(endpoint.get("file"), package_name), "role": "sensor data interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.78), 2)})
         for endpoint in report["publishers"] + report["action_clients"] + report["service_clients"]:
             combined = f"{endpoint.get('name') or ''} {endpoint.get('type') or ''}".lower()
             if any(token in combined for token in actuator_types) or any(token in combined for token in ("cmd_vel", "command", "motor", "gripper", "actuat")):
-                actuators.append({**endpoint, "package": package_name, "role": "command or actuation interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.75), 2)})
+                actuators.append({**endpoint, "package": package_name, "deployment_scope": deployment_scope(endpoint.get("file"), package_name), "role": "command or actuation interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.75), 2)})
         for plugin in report["plugins"]:
-            algorithms.append({**plugin, "package": package_name, "role": plugin.get("type") or "runtime plugin", "fact_type": "inferred", "confidence": 0.78})
-    return {"sensors": unique_findings(sensors), "actuation": unique_findings(actuators), "algorithms": unique_findings(algorithms)}
+            algorithms.append({**plugin, "package": package_name, "deployment_scope": deployment_scope(plugin.get("file"), package_name), "role": plugin.get("type") or "runtime plugin", "fact_type": "inferred", "confidence": 0.78})
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+    ordered = lambda items: sorted(unique_findings(items), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("file") or "", item.get("name") or ""))
+    return {"sensors": ordered(sensors), "actuation": ordered(actuators), "algorithms": ordered(algorithms)}
 
 
 def modification_points(package_reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     results = []
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+
+    def preferred(items: Iterable[Any], package_name: str, file_getter: Callable[[Any], str]) -> tuple[Any, str] | tuple[None, None]:
+        candidates = [(item, deployment_scope(file_getter(item), package_name)) for item in items]
+        return min(candidates, key=lambda value: scope_rank.get(value[1], 3)) if candidates else (None, None)
+
     for report in package_reports:
         package = report["package"]["name"]
-        if report["launch_files"]:
-            results.append({"task": "Change startup, composition, namespaces, or remappings", "path": report["launch_files"][0]["file"], "package": package, "reason": "launch entry point detected", "fact_type": "inferred", "confidence": 0.85, "evidence": report["launch_files"][0]["evidence"]})
-        if report["parameter_files"]:
-            results.append({"task": "Tune runtime behavior and algorithm settings", "path": report["parameter_files"][0]["file"], "package": package, "reason": "ROS parameter file detected", "fact_type": "inferred", "confidence": 0.82, "evidence": report["parameter_files"][0]["evidence"]})
-        if report["urdf_files"]:
-            results.append({"task": "Change robot geometry, joints, sensors, or frame structure", "path": report["urdf_files"][0], "package": package, "reason": "URDF/Xacro model detected", "fact_type": "inferred", "confidence": 0.9, "evidence": [evidence(report["urdf_files"][0], 1, "path_classifier", "URDF/Xacro")]})
-        if report["interfaces"]:
-            results.append({"task": "Change a ROS message, service, or action contract", "path": report["interfaces"][0]["file"], "package": package, "reason": "custom interface detected", "fact_type": "inferred", "confidence": 0.9, "evidence": report["interfaces"][0]["evidence"]})
+        launch_file, launch_scope = preferred(report["launch_files"], package, lambda item: item["file"])
+        if launch_file:
+            results.append({"task": "Change startup, composition, namespaces, or remappings", "path": launch_file["file"], "package": package, "deployment_scope": launch_scope, "reason": "launch entry point detected", "fact_type": "inferred", "confidence": 0.85, "evidence": launch_file["evidence"]})
+        parameter_file, parameter_scope = preferred(report["parameter_files"], package, lambda item: item["file"])
+        if parameter_file:
+            results.append({"task": "Tune runtime behavior and algorithm settings", "path": parameter_file["file"], "package": package, "deployment_scope": parameter_scope, "reason": "ROS parameter file detected", "fact_type": "inferred", "confidence": 0.82, "evidence": parameter_file["evidence"]})
+        urdf_file, urdf_scope = preferred(report["urdf_files"], package, str)
+        if urdf_file:
+            results.append({"task": "Change robot geometry, joints, sensors, or frame structure", "path": urdf_file, "package": package, "deployment_scope": urdf_scope, "reason": "URDF/Xacro model detected", "fact_type": "inferred", "confidence": 0.9, "evidence": [evidence(urdf_file, 1, "path_classifier", "URDF/Xacro")]})
+        interface, interface_scope = preferred(report["interfaces"], package, lambda item: item["file"])
+        if interface:
+            results.append({"task": "Change a ROS message, service, or action contract", "path": interface["file"], "package": package, "deployment_scope": interface_scope, "reason": "custom interface detected", "fact_type": "inferred", "confidence": 0.9, "evidence": interface["evidence"]})
         entities = [item for key in ("publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients") for item in report[key]]
         if entities:
-            source = max({item["file"] for item in entities}, key=lambda file: sum(item["file"] == file for item in entities))
-            source_entity = next(item for item in entities if item["file"] == source)
-            results.append({"task": "Change node behavior or ROS communication", "path": source, "package": package, "reason": "source file contains ROS entities", "fact_type": "inferred", "confidence": 0.8, "evidence": source_entity["evidence"]})
-    return results
+            entity_scopes = {item["file"]: deployment_scope(item["file"], package) for item in entities}
+            best_scope = min(entity_scopes.values(), key=lambda scope: scope_rank.get(scope, 3))
+            scoped_entities = [item for item in entities if entity_scopes[item["file"]] == best_scope]
+            source = max({item["file"] for item in scoped_entities}, key=lambda file: sum(item["file"] == file for item in scoped_entities))
+            source_entity = next(item for item in scoped_entities if item["file"] == source)
+            results.append({"task": "Change node behavior or ROS communication", "path": source, "package": package, "deployment_scope": best_scope, "reason": "source file contains ROS entities", "fact_type": "inferred", "confidence": 0.8, "evidence": source_entity["evidence"]})
+    return sorted(results, key=lambda item: (scope_rank.get(item["deployment_scope"], 3), item["package"], item["path"], item["task"]))
 
 
 def run_diagnostics(
@@ -3045,7 +3060,7 @@ def _scan_repository(root: Path) -> dict[str, Any]:
             continue
         rel_file = relative(path, root)
         if path.name == "CMakeLists.txt":
-            executables, references, uninstalled = scan_cmake(path, root)
+            executables, references, uninstalled = scan_cmake(path, root, package["name"])
             report["executables"].extend(executables)
             report["referenced_packages"].extend(references)
             for reference, reference_items in references.items():
@@ -3105,6 +3120,9 @@ def _scan_repository(root: Path) -> dict[str, Any]:
             report["plugins"].extend(scan_plugins(path, root))
         if path.suffix in {".urdf", ".xacro"}:
             transforms, sensors, frames = scan_urdf(path, root)
+            for sensor in sensors:
+                sensor["package"] = package["name"]
+                sensor["deployment_scope"] = deployment_scope(sensor.get("file"), package["name"])
             urdf_transforms.extend(transforms)
             urdf_sensors.extend(sensors)
             urdf_frames.update(frames)

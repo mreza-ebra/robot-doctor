@@ -19,7 +19,7 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.4.0"},
+    "schema_version": {"const": "1.5.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
     "provenance": {"$ref": "#/$defs/provenance"},
@@ -179,7 +179,8 @@
         "lifecycle": {"type": "boolean"},
         "role": {"type": "string"},
         "package": {"type": "string"},
-        "wrapper": {"type": "object"}
+        "wrapper": {"type": "object"},
+        "deployment_scope": {"enum": ["production", "test", "example"]}
       },
       "additionalProperties": true
     },
@@ -525,11 +526,12 @@
     "modificationPoint": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["task", "path", "package", "reason", "fact_type", "confidence", "evidence"],
+      "required": ["task", "path", "package", "deployment_scope", "reason", "fact_type", "confidence", "evidence"],
       "properties": {
         "task": {"type": "string"},
         "path": {"type": "string"},
         "package": {"type": "string"},
+        "deployment_scope": {"enum": ["production", "test", "example"]},
         "reason": {"type": "string"},
         "fact_type": {"const": "inferred"},
         "confidence": {"$ref": "#/$defs/confidence"},

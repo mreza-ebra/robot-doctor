@@ -377,11 +377,14 @@ def interface_table(data: dict[str, Any], graph_name: str, left: str, right: str
 def role_table(data: dict[str, Any], limit: int = 40) -> str:
     architecture = data.get("architecture") or {}
     rows = []
+    scope_rank = {"production": 0, "example": 1, "test": 2}
     for category in ("sensors", "algorithms", "actuation"):
-        for item in architecture.get(category, []):
+        items = sorted(architecture.get(category, []), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("name") or ""))
+        for item in items:
             rows.append(
                 "<tr>"
                 f"<td>{html.escape(category[:-1].title() if category.endswith('s') else category.title())}</td>"
+                f"<td>{html.escape(str(item.get('deployment_scope') or 'production'))}</td>"
                 f"<td>{html.escape(str(item.get('name') or '<unresolved>'))}</td>"
                 f"<td>{html.escape(str(item.get('type') or ''))}</td>"
                 f"<td>{html.escape(str(item.get('role') or ''))}</td>"
@@ -393,20 +396,23 @@ def role_table(data: dict[str, Any], limit: int = 40) -> str:
                 break
         if len(rows) >= limit:
             break
-    return "".join(rows) or '<tr><td colspan="6">No sensor, algorithm, or actuation role was inferred from source evidence.</td></tr>'
+    return "".join(rows) or '<tr><td colspan="7">No sensor, algorithm, or actuation role was inferred from source evidence.</td></tr>'
 
 
 def modification_table(data: dict[str, Any], limit: int = 30) -> str:
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+    items = sorted(data.get("architecture", {}).get("modification_points", []), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("path") or ""))[:limit]
     rows = "".join(
         "<tr>"
         f"<td>{html.escape(str(item.get('task') or ''))}</td>"
         f"<td>{html.escape(str(item.get('package') or ''))}</td>"
+        f"<td>{html.escape(str(item.get('deployment_scope') or 'production'))}</td>"
         f"<td>{html.escape(str(item.get('path') or ''))}</td>"
         f"<td>{html.escape(str(item.get('reason') or ''))}</td>"
         "</tr>"
-        for item in data.get("architecture", {}).get("modification_points", [])[:limit]
+        for item in items
     )
-    return rows or '<tr><td colspan="4">No evidence-backed modification point was inferred.</td></tr>'
+    return rows or '<tr><td colspan="5">No evidence-backed modification point was inferred.</td></tr>'
 
 
 def provenance_table(data: dict[str, Any]) -> str:
@@ -510,8 +516,8 @@ def result_body(
 <details><summary>Topics</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Publishers</th><th>Subscribers</th></tr></thead><tbody>{interface_table(data, 'topics', 'publishers', 'subscribers')}</tbody></table></details>
 <details><summary>Services</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'services', 'servers', 'clients')}</tbody></table></details>
 <details><summary>Actions</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'actions', 'servers', 'clients')}</tbody></table></details>
-<details open><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
-<details open><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
+<details open><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
+<details open><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Scope</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
 <section><h2>Prioritized Findings</h2>{findings_filter_form(data, link_prefix, severity_filter, package_filter)}<p class="muted">Showing {len(shown)} of {len(diagnostics)} findings matching the current filters. Informational findings are collapsed by default.</p>{findings}</section>
 <section><h2>Reproducibility</h2><table>{provenance_table(data)}</table></section>
 <section><h2>Downloads</h2><p class="downloads">{downloads}</p></section>"""

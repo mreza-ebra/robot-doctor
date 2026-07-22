@@ -288,7 +288,7 @@ def diagnostics_rows(data: dict[str, Any]) -> list[list[Any]]:
 def architecture_rows(data: dict[str, Any], key: str) -> list[list[Any]]:
     rows = []
     for item in data["architecture"][key]:
-        rows.append([item.get("package") or "", item.get("name") or "<unresolved>", item.get("type") or item.get("role") or "", item.get("role") or "", location(item), certainty(item)])
+        rows.append([item.get("package") or "", item.get("deployment_scope") or "production", item.get("name") or "<unresolved>", item.get("type") or item.get("role") or "", item.get("role") or "", location(item), certainty(item)])
     return rows
 
 
@@ -362,7 +362,7 @@ def qos_rows(data: dict[str, Any]) -> list[list[Any]]:
 
 
 def modification_rows(data: dict[str, Any]) -> list[list[Any]]:
-    return [[item["task"], item["package"], item["path"], item["reason"], certainty(item), first_evidence(item)] for item in data["architecture"]["modification_points"]]
+    return [[item["task"], item["package"], item.get("deployment_scope") or "production", item["path"], item["reason"], certainty(item), first_evidence(item)] for item in data["architecture"]["modification_points"]]
 
 
 def factual_scope(data: dict[str, Any]) -> str:
@@ -411,19 +411,19 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 ## Sensors And Inputs
 
-{md_table(['Package', 'Name', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'sensors')[:12])}
+{md_table(['Package', 'Scope', 'Name', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'sensors')[:12])}
 
 ## Control Algorithms And Plugins
 
-{md_table(['Package', 'Component', 'Detected type', 'Inferred role', 'Location', 'Certainty'], architecture_rows(data, 'algorithms')[:12])}
+{md_table(['Package', 'Scope', 'Component', 'Detected type', 'Inferred role', 'Location', 'Certainty'], architecture_rows(data, 'algorithms')[:12])}
 
 ## Commands And Actuation
 
-{md_table(['Package', 'Interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation')[:12])}
+{md_table(['Package', 'Scope', 'Interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation')[:12])}
 
 ## Where To Make Changes
 
-{md_table(['Task', 'Package', 'Path', 'Why this path', 'Certainty', 'Evidence'], modification_rows(data))}
+{md_table(['Task', 'Package', 'Scope', 'Path', 'Why this path', 'Certainty', 'Evidence'], modification_rows(data))}
 
 ## Important Findings
 
@@ -506,11 +506,11 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 
 ## Sensors, Algorithms, And Actuation
 
-{md_table(['Package', 'Sensor/input', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'sensors'))}
+{md_table(['Package', 'Scope', 'Sensor/input', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'sensors'))}
 
-{md_table(['Package', 'Plugin/component', 'Detected type', 'Inferred role', 'Location', 'Certainty'], architecture_rows(data, 'algorithms'))}
+{md_table(['Package', 'Scope', 'Plugin/component', 'Detected type', 'Inferred role', 'Location', 'Certainty'], architecture_rows(data, 'algorithms'))}
 
-{md_table(['Package', 'Command interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation'))}
+{md_table(['Package', 'Scope', 'Command interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation'))}
 
 ## Custom Interfaces
 
@@ -518,7 +518,7 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 
 ## Modification Guide
 
-{md_table(['Task', 'Package', 'Path', 'Why this path', 'Certainty', 'Evidence'], modification_rows(data))}
+{md_table(['Task', 'Package', 'Scope', 'Path', 'Why this path', 'Certainty', 'Evidence'], modification_rows(data))}
 
 ## Diagnostics
 
@@ -633,15 +633,15 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 
 ### Sensors
 
-{md_table(['Package', 'Name', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'sensors'))}
+{md_table(['Package', 'Scope', 'Name', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'sensors'))}
 
 ### Algorithms And Plugins
 
-{md_table(['Package', 'Component', 'Detected type', 'Inferred role', 'Location', 'Certainty'], architecture_rows(data, 'algorithms'))}
+{md_table(['Package', 'Scope', 'Component', 'Detected type', 'Inferred role', 'Location', 'Certainty'], architecture_rows(data, 'algorithms'))}
 
 ### Actuation And Commands
 
-{md_table(['Package', 'Interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation'))}
+{md_table(['Package', 'Scope', 'Interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation'))}
 
 ## Unresolved Static Expressions
 
