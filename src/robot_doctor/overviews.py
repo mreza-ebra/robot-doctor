@@ -199,6 +199,27 @@ def architecture_diagram(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def ros2_control_diagram(data: dict[str, Any]) -> str:
+    control = data["architecture"]["ros2_control"]
+    lines = ["```mermaid", "flowchart LR"]
+    if control["state_interfaces"]:
+        lines.append('  hardware["Hardware components"] -->|"state interfaces"| controllers["Controllers"]')
+    else:
+        lines.append('  hardware["Hardware components"] --> controllers["Controllers"]')
+    if control["command_interfaces"]:
+        lines.append('  controllers -->|"command interfaces"| hardware')
+    if control["transmissions"]:
+        lines.append('  hardware --> transmissions["Transmissions"] --> resources["Joints / actuators"]')
+    if control["plugins"]:
+        lines.append('  plugins["Pluginlib declarations"] -.-> hardware')
+        lines.append('  plugins -.-> controllers')
+        lines.append('  plugins -.-> transmissions')
+    if not any(control.values()):
+        lines = ["```mermaid", "flowchart LR", '  none["No ros2_control declarations detected"]']
+    lines.append("```")
+    return "\n".join(lines)
+
+
 def node_graph_diagram(data: dict[str, Any], limit: int = 35) -> str:
     scope_rank = {"production": 0, "example": 1, "test": 2}
     active_nodes = sorted(
@@ -289,6 +310,42 @@ def architecture_rows(data: dict[str, Any], key: str) -> list[list[Any]]:
     rows = []
     for item in data["architecture"][key]:
         rows.append([item.get("package") or "", item.get("deployment_scope") or "production", item.get("name") or "<unresolved>", item.get("type") or item.get("role") or "", item.get("role") or "", location(item), certainty(item)])
+    return rows
+
+
+def ros2_control_rows(data: dict[str, Any]) -> list[list[Any]]:
+    rows = []
+    control = data["architecture"]["ros2_control"]
+    categories = (
+        ("hardware_components", "hardware component"),
+        ("controllers", "controller"),
+        ("transmissions", "transmission"),
+        ("command_interfaces", "command interface"),
+        ("state_interfaces", "state interface"),
+        ("plugins", "plugin declaration"),
+    )
+    for key, category in categories:
+        for item in control[key]:
+            details = []
+            for field in ("component", "resource", "plugin", "base_class_type"):
+                if item.get(field):
+                    details.append(f"{field}={item[field]}")
+            if item.get("command_interfaces"):
+                details.append(f"commands={string(item['command_interfaces'])}")
+            if item.get("state_interfaces"):
+                details.append(f"states={string(item['state_interfaces'])}")
+            rows.append([
+                category,
+                item.get("package") or "",
+                item.get("deployment_scope") or "production",
+                item.get("identifier") or item.get("name") or "<unresolved>",
+                item.get("type") or item.get("component_type") or "",
+                item.get("role") or item.get("resource_type") or "",
+                item.get("source") or "urdf",
+                "; ".join(details),
+                location(item),
+                certainty(item),
+            ])
     return rows
 
 
@@ -421,6 +478,12 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 {md_table(['Package', 'Scope', 'Interface', 'Type', 'Role', 'Location', 'Certainty'], architecture_rows(data, 'actuation')[:12])}
 
+## ros2_control
+
+{ros2_control_diagram(data)}
+
+{md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data)[:15])}
+
 ## Where To Make Changes
 
 {md_table(['Task', 'Package', 'Scope', 'Path', 'Why this path', 'Certainty', 'Evidence'], modification_rows(data))}
@@ -503,6 +566,12 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 ## Robot Structure And TF
 
 {tf_diagram(data)}
+
+## ros2_control Hardware And Controllers
+
+{ros2_control_diagram(data)}
+
+{md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data))}
 
 ## Sensors, Algorithms, And Actuation
 
@@ -628,6 +697,12 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 {tf_diagram(data, limit=60)}
 
 {md_table(['Parent', 'Child', 'Joint', 'Location', 'Certainty'], [[item['parent'], item['child'], item['joint'], location(item), certainty(item)] for item in data['architecture']['tf']['transforms']])}
+
+## ros2_control Model
+
+{ros2_control_diagram(data)}
+
+{md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data))}
 
 ## Inferred Architecture
 

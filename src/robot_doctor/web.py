@@ -399,6 +399,52 @@ def role_table(data: dict[str, Any], limit: int = 40) -> str:
     return "".join(rows) or '<tr><td colspan="7">No sensor, algorithm, or actuation role was inferred from source evidence.</td></tr>'
 
 
+def ros2_control_table(data: dict[str, Any], limit: int = 80) -> str:
+    control = data.get("architecture", {}).get("ros2_control", {})
+    rows = []
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+    categories = (
+        ("hardware_components", "Hardware component"),
+        ("controllers", "Controller"),
+        ("transmissions", "Transmission"),
+        ("command_interfaces", "Command interface"),
+        ("state_interfaces", "State interface"),
+        ("plugins", "Plugin declaration"),
+    )
+    for key, label in categories:
+        items = sorted(control.get(key, []), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("file") or "", item.get("name") or ""))
+        for item in items:
+            details = []
+            if item.get("component"):
+                details.append(f"component={item['component']}")
+            if item.get("resource"):
+                details.append(f"resource={item['resource']}")
+            if item.get("plugin"):
+                details.append(f"plugin={item['plugin']}")
+            if item.get("base_class_type"):
+                details.append(f"base={item['base_class_type']}")
+            if item.get("command_interfaces"):
+                details.append(f"commands={', '.join(item['command_interfaces'])}")
+            if item.get("state_interfaces"):
+                details.append(f"states={', '.join(item['state_interfaces'])}")
+            rows.append(
+                "<tr>"
+                f"<td>{html.escape(label)}</td>"
+                f"<td>{html.escape(str(item.get('deployment_scope') or 'production'))}</td>"
+                f"<td>{html.escape(str(item.get('identifier') or item.get('name') or '<unresolved>'))}</td>"
+                f"<td>{html.escape(str(item.get('type') or item.get('component_type') or ''))}</td>"
+                f"<td>{html.escape(str(item.get('role') or item.get('resource_type') or ''))}</td>"
+                f"<td>{html.escape(str(item.get('source') or 'urdf'))}</td>"
+                f"<td>{html.escape(str(item.get('package') or ''))}</td>"
+                f"<td>{html.escape('; '.join(details))}</td>"
+                f"<td>{html.escape(str(item.get('file') or ''))}</td>"
+                "</tr>"
+            )
+            if len(rows) >= limit:
+                return "".join(rows)
+    return "".join(rows) or '<tr><td colspan="9">No ros2_control declarations were detected.</td></tr>'
+
+
 def modification_table(data: dict[str, Any], limit: int = 30) -> str:
     scope_rank = {"production": 0, "example": 1, "test": 2}
     items = sorted(data.get("architecture", {}).get("modification_points", []), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("path") or ""))[:limit]
@@ -517,6 +563,7 @@ def result_body(
 <details><summary>Services</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'services', 'servers', 'clients')}</tbody></table></details>
 <details><summary>Actions</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'actions', 'servers', 'clients')}</tbody></table></details>
 <details open><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
+<details open><summary>ros2_control model</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Source</th><th>Package</th><th>Details</th><th>File</th></tr></thead><tbody>{ros2_control_table(data)}</tbody></table></details>
 <details open><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Scope</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
 <section><h2>Prioritized Findings</h2>{findings_filter_form(data, link_prefix, severity_filter, package_filter)}<p class="muted">Showing {len(shown)} of {len(diagnostics)} findings matching the current filters. Informational findings are collapsed by default.</p>{findings}</section>
 <section><h2>Reproducibility</h2><table>{provenance_table(data)}</table></section>

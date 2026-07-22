@@ -7,6 +7,7 @@ import argparse
 import ast
 import configparser
 import contextvars
+import html as html_lib
 import json
 import os
 import platform
@@ -30,7 +31,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.5.0"
+SCHEMA_VERSION = "1.6.0"
 SCANNER_VERSION = "0.6.0.dev0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -1675,6 +1676,32 @@ def scan_parameter_yaml(path: Path, root: Path) -> list[dict[str, Any]]:
     return unique_findings(results)
 
 
+def xml_attributes(fragment: str) -> dict[str, str]:
+    return {
+        match.group(1): html_lib.unescape(match.group(3))
+        for match in re.finditer(r"([A-Za-z_:][A-Za-z0-9_.:-]*)\s*=\s*(['\"])(.*?)\2", fragment, re.DOTALL)
+    }
+
+
+def plugin_role(base_class_type: str | None, *identifiers: str | None) -> tuple[str, str]:
+    base = (base_class_type or "").casefold()
+    combined = " ".join(str(value or "") for value in identifiers)
+    if "hardware_interface::actuatorinterface" in base:
+        return "ros2_control actuator hardware", "hardware_actuator"
+    if "hardware_interface::sensorinterface" in base:
+        return "ros2_control sensor hardware", "hardware_sensor"
+    if "hardware_interface::systeminterface" in base:
+        return "ros2_control system hardware", "hardware_system"
+    if "controller_interface::chainablecontrollerinterface" in base:
+        return "ros2_control chainable controller", "controller"
+    if "controller_interface::controllerinterface" in base:
+        return "ros2_control controller", "controller"
+    if "transmission_interface::transmissionloader" in base:
+        return "ros2_control transmission loader", "transmission"
+    role = infer_algorithm_role(combined)
+    return role, "algorithm" if role != "runtime plugin" else "plugin"
+
+
 def scan_plugins(path: Path, root: Path) -> list[dict[str, Any]]:
     text = read_text(path)
     rel_file = relative(path, root)
@@ -1682,11 +1709,34 @@ def scan_plugins(path: Path, root: Path) -> list[dict[str, Any]]:
     if path.suffix in {".yaml", ".yml"}:
         for match in re.finditer(r"^\s*plugin\s*:\s*['\"]?([^'\"#\n]+)", text, re.MULTILINE):
             name = match.group(1).strip()
-            results.append(finding("plugin", name, infer_algorithm_role(name), rel_file, line_number(text, match.start()), "yaml_plugin", match.group(0), confidence=0.96))
+            role, category = plugin_role(None, name)
+            results.append(finding("plugin", name, name, rel_file, line_number(text, match.start()), "yaml_plugin", match.group(0), confidence=0.96, role=role, plugin_category=category))
     elif path.suffix == ".xml":
-        for match in re.finditer(r"<class\b[^>]*\btype\s*=\s*['\"]([^'\"]+)['\"][^>]*>", text):
-            name = match.group(1)
-            results.append(finding("plugin", name, infer_algorithm_role(name), rel_file, line_number(text, match.start()), "pluginlib_xml", match.group(0), confidence=0.98))
+        for match in re.finditer(r"<class\b([^>]*)>", text, re.DOTALL):
+            attributes = xml_attributes(match.group(1))
+            class_type = attributes.get("type")
+            name = attributes.get("name") or class_type
+            if not name:
+                continue
+            base_class_type = attributes.get("base_class_type")
+            role, category = plugin_role(base_class_type, name, class_type)
+            dynamic = any(token in str(value) for value in (name, class_type, base_class_type) for token in ("${", "$("))
+            results.append(
+                finding(
+                    "plugin",
+                    name,
+                    class_type,
+                    rel_file,
+                    line_number(text, match.start()),
+                    "pluginlib_xml",
+                    match.group(0),
+                    confidence=0.98 if not dynamic else 0.72,
+                    resolved=not dynamic,
+                    role=role,
+                    plugin_category=category,
+                    base_class_type=base_class_type,
+                )
+            )
     return results
 
 
@@ -1951,7 +2001,124 @@ def scan_launch_file(path: Path, root: Path) -> tuple[list[dict[str, Any]], list
     return scan_launch_xml(path, root)
 
 
-def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+def control_parameters(fragment: str) -> dict[str, str]:
+    return {
+        attributes.get("name", ""): html_lib.unescape(match.group(2).strip())
+        for match in re.finditer(r"<param\b([^>]*)>(.*?)</param>", fragment, re.DOTALL)
+        if (attributes := xml_attributes(match.group(1))).get("name")
+    }
+
+
+def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]]]:
+    model: dict[str, list[dict[str, Any]]] = {
+        "hardware_components": [],
+        "transmissions": [],
+        "command_interfaces": [],
+        "state_interfaces": [],
+    }
+    component_pattern = re.compile(r"<ros2_control\b([^>]*)>(.*?)</ros2_control>", re.DOTALL)
+    resource_pattern = re.compile(r"<(joint|sensor|gpio)\b([^>]*)>(.*?)</\1>", re.DOTALL)
+    interface_pattern = re.compile(r"<(command_interface|state_interface)\b([^>]*?)(?:/\s*>|>(.*?)</\1>)", re.DOTALL)
+    for component_match in component_pattern.finditer(text):
+        attributes = xml_attributes(component_match.group(1))
+        component_name = attributes.get("name") or "<unnamed ros2_control component>"
+        component_type = attributes.get("type") or "system"
+        body = component_match.group(2)
+        hardware_match = re.search(r"<hardware\b[^>]*>(.*?)</hardware>", body, re.DOTALL)
+        plugin_match = re.search(r"<plugin\b[^>]*>(.*?)</plugin>", hardware_match.group(1), re.DOTALL) if hardware_match else None
+        plugin = html_lib.unescape(plugin_match.group(1).strip()) if plugin_match else None
+        resources = []
+        command_identifiers = []
+        state_identifiers = []
+        for resource_match in resource_pattern.finditer(body):
+            resource_type = resource_match.group(1)
+            resource_attributes = xml_attributes(resource_match.group(2))
+            resource_name = resource_attributes.get("name") or f"<unnamed {resource_type}>"
+            resources.append({"name": resource_name, "type": resource_type})
+            resource_body = resource_match.group(3)
+            for interface_match in interface_pattern.finditer(resource_body):
+                interface_kind = interface_match.group(1)
+                interface_attributes = xml_attributes(interface_match.group(2))
+                interface_name = interface_attributes.get("name") or "<unnamed interface>"
+                identifier = f"{resource_name}/{interface_name}"
+                interface_offset = component_match.start(2) + resource_match.start(3) + interface_match.start()
+                dynamic = any(token in value for value in (component_name, resource_name, interface_name) for token in ("${", "$("))
+                record = {
+                    "identifier": identifier,
+                    "name": interface_name,
+                    "resource": resource_name,
+                    "resource_type": resource_type,
+                    "component": component_name,
+                    "component_type": component_type,
+                    "parameters": control_parameters(interface_match.group(3) or ""),
+                    "file": rel_file,
+                    "line": line_number(text, interface_offset),
+                    "fact_type": "detected",
+                    "confidence": 0.98 if not dynamic else 0.72,
+                    "resolved": not dynamic,
+                    "evidence": [evidence(rel_file, line_number(text, interface_offset), "ros2_control_urdf", interface_match.group(0))],
+                }
+                model["command_interfaces" if interface_kind == "command_interface" else "state_interfaces"].append(record)
+                (command_identifiers if interface_kind == "command_interface" else state_identifiers).append(identifier)
+        component_line = line_number(text, component_match.start())
+        dynamic = any(token in value for value in (component_name, component_type, plugin or "") for token in ("${", "$("))
+        model["hardware_components"].append(
+            {
+                "name": component_name,
+                "type": component_type,
+                "role": f"ros2_control {component_type} hardware component",
+                "source": "urdf",
+                "plugin": plugin,
+                "base_class_type": None,
+                "resources": resources,
+                "command_interfaces": sorted(set(command_identifiers)),
+                "state_interfaces": sorted(set(state_identifiers)),
+                "joints": sorted({item["name"] for item in resources if item["type"] == "joint"}),
+                "actuators": sorted({item["name"] for item in resources if item["type"] == "actuator"}),
+                "file": rel_file,
+                "line": component_line,
+                "fact_type": "detected",
+                "confidence": 0.98 if not dynamic else 0.72,
+                "resolved": not dynamic,
+                "evidence": [evidence(rel_file, component_line, "ros2_control_urdf", component_match.group(0))],
+            }
+        )
+    transmission_pattern = re.compile(r"<transmission\b([^>]*)>(.*?)</transmission>", re.DOTALL)
+    for match in transmission_pattern.finditer(text):
+        attributes = xml_attributes(match.group(1))
+        body = match.group(2)
+        name = attributes.get("name") or "<unnamed transmission>"
+        type_match = re.search(r"<(?:type|plugin)\b[^>]*>(.*?)</(?:type|plugin)>", body, re.DOTALL)
+        transmission_type = html_lib.unescape(type_match.group(1).strip()) if type_match else None
+        joints = [xml_attributes(item.group(1)).get("name") for item in re.finditer(r"<joint\b([^>]*)>", body)]
+        actuators = [xml_attributes(item.group(1)).get("name") for item in re.finditer(r"<actuator\b([^>]*)>", body)]
+        transmission_line = line_number(text, match.start())
+        dynamic = any(token in str(value or "") for value in (name, transmission_type) for token in ("${", "$("))
+        model["transmissions"].append(
+            {
+                "name": name,
+                "type": transmission_type,
+                "role": "ros2_control transmission mapping",
+                "source": "urdf",
+                "plugin": transmission_type,
+                "base_class_type": None,
+                "resources": [],
+                "command_interfaces": [],
+                "state_interfaces": [],
+                "joints": sorted({item for item in joints if item}),
+                "actuators": sorted({item for item in actuators if item}),
+                "file": rel_file,
+                "line": transmission_line,
+                "fact_type": "detected",
+                "confidence": 0.96 if not dynamic else 0.72,
+                "resolved": not dynamic,
+                "evidence": [evidence(rel_file, transmission_line, "urdf_transmission", match.group(0))],
+            }
+        )
+    return model
+
+
+def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, list[dict[str, Any]]]]:
     text = read_text(path)
     rel_file = relative(path, root)
     transforms = []
@@ -1963,7 +2130,10 @@ def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[s
         child = re.search(r"<child\b[^>]*\blink\s*=\s*['\"]([^'\"]+)", match.group(2))
         if parent and child:
             transforms.append({"parent": parent.group(1), "child": child.group(1), "joint": match.group(1), "file": rel_file, "line": line_number(text, match.start()), "fact_type": "detected", "confidence": 0.98, "evidence": [evidence(rel_file, line_number(text, match.start()), "urdf_parser", match.group(0))]})
+    control_spans = [match.span() for match in re.finditer(r"<ros2_control\b[^>]*>.*?</ros2_control>", text, re.DOTALL)]
     for match in re.finditer(r"<sensor\b([^>]*)>", text):
+        if any(start <= match.start() < end for start, end in control_spans):
+            continue
         attributes = match.group(1)
         name_match = re.search(r"\bname\s*=\s*['\"]([^'\"]+)", attributes)
         type_match = re.search(r"\btype\s*=\s*['\"]([^'\"]+)", attributes)
@@ -1971,7 +2141,7 @@ def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[s
             name = name_match.group(1) if name_match else type_match.group(1)
             dynamic = "${" in name or "$(" in name
             sensors.append(finding("sensor", name, type_match.group(1) if type_match else "urdf sensor", rel_file, line_number(text, match.start()), "urdf_sensor_parser", match.group(0), confidence=0.96 if not dynamic else 0.72, resolved=not dynamic))
-    return transforms, sensors, sorted(frames)
+    return transforms, sensors, sorted(frames), scan_ros2_control(text, rel_file)
 
 
 def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any]:
@@ -2583,7 +2753,118 @@ def communication_architecture(nodes: list[dict[str, Any]], left_key: str, right
     return results
 
 
-def infer_architecture(package_reports: list[dict[str, Any]], urdf_sensors: list[dict[str, Any]]) -> dict[str, Any]:
+def control_entity_from_plugin(plugin: dict[str, Any], package_name: str) -> dict[str, Any]:
+    return {
+        "name": plugin.get("name") or "<unnamed plugin>",
+        "type": plugin.get("type"),
+        "role": plugin.get("role") or "ros2_control plugin",
+        "source": "pluginlib",
+        "plugin": plugin.get("name"),
+        "base_class_type": plugin.get("base_class_type"),
+        "resources": [],
+        "command_interfaces": [],
+        "state_interfaces": [],
+        "joints": [],
+        "actuators": [],
+        "package": package_name,
+        "deployment_scope": deployment_scope(plugin.get("file"), package_name),
+        "file": plugin.get("file") or "",
+        "line": plugin.get("line"),
+        "fact_type": "detected",
+        "confidence": plugin.get("confidence", 0.0),
+        "resolved": plugin.get("resolved", False),
+        "evidence": plugin.get("evidence") or [],
+    }
+
+
+def build_ros2_control_model(package_reports: list[dict[str, Any]], urdf_control: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
+    model = {key: list(values) for key, values in urdf_control.items()}
+    model.update({"controllers": [], "plugins": []})
+    for report in package_reports:
+        package_name = report["package"]["name"]
+        for plugin in report["plugins"]:
+            category = plugin.get("plugin_category")
+            if category not in {"hardware_actuator", "hardware_sensor", "hardware_system", "controller", "transmission"}:
+                continue
+            entity = control_entity_from_plugin(plugin, package_name)
+            model["plugins"].append(entity)
+            if category == "controller":
+                model["controllers"].append(entity)
+            elif category == "transmission":
+                model["transmissions"].append(entity)
+        for parameter in report["parameter_overrides"]:
+            selector = str(parameter.get("selector") or "").casefold()
+            parameter_path = parameter.get("parameter_path") or []
+            controller_type = parameter.get("value")
+            if "controller_manager" not in selector or len(parameter_path) < 2 or parameter_path[-1] != "type" or not isinstance(controller_type, str):
+                continue
+            controller_name = ".".join(str(part) for part in parameter_path[:-1])
+            controller_configuration: dict[str, list[str]] = {"joints": [], "command_interfaces": [], "state_interfaces": []}
+            for candidate in report["parameter_overrides"]:
+                candidate_path = [str(part) for part in candidate.get("parameter_path") or []]
+                candidate_selector = str(candidate.get("selector") or "").strip("/").split("/")[-1]
+                field = None
+                if candidate_selector == controller_name and candidate_path:
+                    field = candidate_path[-1]
+                elif len(candidate_path) >= 2 and ".".join(candidate_path[:-1]) == controller_name:
+                    field = candidate_path[-1]
+                if field not in controller_configuration:
+                    continue
+                value = candidate.get("value")
+                if isinstance(value, list):
+                    controller_configuration[field].extend(str(item) for item in value)
+                elif value is not None:
+                    controller_configuration[field].append(str(value))
+            model["controllers"].append(
+                {
+                    "name": controller_name,
+                    "type": controller_type,
+                    "role": "configured ros2_control controller",
+                    "source": "parameter",
+                    "plugin": controller_type,
+                    "base_class_type": None,
+                    "resources": [],
+                    "command_interfaces": sorted(set(controller_configuration["command_interfaces"])),
+                    "state_interfaces": sorted(set(controller_configuration["state_interfaces"])),
+                    "joints": sorted(set(controller_configuration["joints"])),
+                    "actuators": [],
+                    "package": package_name,
+                    "deployment_scope": deployment_scope(parameter.get("file"), package_name),
+                    "file": parameter.get("file") or "",
+                    "line": parameter.get("line"),
+                    "fact_type": "detected",
+                    "confidence": min(parameter.get("confidence", 0.0), 0.94),
+                    "resolved": parameter.get("resolved", False),
+                    "evidence": parameter.get("evidence") or [],
+                }
+            )
+    keys = ("hardware_components", "controllers", "transmissions", "command_interfaces", "state_interfaces", "plugins")
+    for key in keys:
+        model[key] = sorted(
+            unique_findings(model.get(key, [])),
+            key=lambda item: (DEPLOYMENT_SCOPES.index(item.get("deployment_scope")) if item.get("deployment_scope") in DEPLOYMENT_SCOPES else 3, item.get("package") or "", item.get("file") or "", item.get("line") or 0, item.get("name") or ""),
+        )
+    return model
+
+
+def inferred_control_finding(item: dict[str, Any], kind: str, name: str, type_name: str | None, role: str, confidence: float = 0.9) -> dict[str, Any]:
+    return {
+        "kind": kind,
+        "name": name,
+        "type": type_name,
+        "file": item.get("file") or "",
+        "line": item.get("line"),
+        "fact_type": "inferred",
+        "confidence": round(min(float(item.get("confidence", 0.0)), confidence), 2),
+        "resolved": item.get("resolved", False),
+        "evidence": item.get("evidence") or [],
+        "package": item.get("package") or "",
+        "deployment_scope": item.get("deployment_scope") or "production",
+        "role": role,
+    }
+
+
+def infer_architecture(package_reports: list[dict[str, Any]], urdf_sensors: list[dict[str, Any]], ros2_control: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     sensors = [{**item, "deployment_scope": item.get("deployment_scope") or deployment_scope(item.get("file"), item.get("package"))} for item in urdf_sensors]
     actuators = []
     algorithms = []
@@ -2600,13 +2881,31 @@ def infer_architecture(package_reports: list[dict[str, Any]], urdf_sensors: list
             if any(token in combined for token in actuator_types) or any(token in combined for token in ("cmd_vel", "command", "motor", "gripper", "actuat")):
                 actuators.append({**endpoint, "package": package_name, "deployment_scope": deployment_scope(endpoint.get("file"), package_name), "role": "command or actuation interface", "fact_type": "inferred", "confidence": round(min(endpoint["confidence"], 0.75), 2)})
         for plugin in report["plugins"]:
-            algorithms.append({**plugin, "package": package_name, "deployment_scope": deployment_scope(plugin.get("file"), package_name), "role": plugin.get("type") or "runtime plugin", "fact_type": "inferred", "confidence": 0.78})
+            item = {**plugin, "package": package_name, "deployment_scope": deployment_scope(plugin.get("file"), package_name), "fact_type": "inferred"}
+            category = plugin.get("plugin_category")
+            if category == "hardware_sensor":
+                sensors.append({**item, "role": plugin.get("role") or "ros2_control sensor hardware", "confidence": round(min(plugin["confidence"], 0.94), 2)})
+            elif category in {"hardware_actuator", "hardware_system"}:
+                actuators.append({**item, "role": plugin.get("role") or "ros2_control hardware", "confidence": round(min(plugin["confidence"], 0.94), 2)})
+            elif category == "transmission":
+                actuators.append({**item, "role": plugin.get("role") or "ros2_control transmission", "confidence": round(min(plugin["confidence"], 0.92), 2)})
+            else:
+                algorithms.append({**item, "role": plugin.get("role") or infer_algorithm_role(plugin.get("name") or ""), "confidence": round(min(plugin["confidence"], 0.9 if category == "controller" else 0.78), 2)})
+    for component in ros2_control["hardware_components"]:
+        component_name = str(component.get("name") or "<unnamed component>")
+        component_type = str(component.get("type") or "system")
+        if component_type.casefold() == "sensor":
+            sensors.append(inferred_control_finding(component, "sensor", component_name, component.get("plugin") or component_type, "ros2_control sensor component", 0.96))
+        elif component.get("command_interfaces") or component_type.casefold() in {"actuator", "system"}:
+            actuators.append(inferred_control_finding(component, "actuation", component_name, component.get("plugin") or component_type, "ros2_control hardware component", 0.96))
+    for interface in ros2_control["command_interfaces"]:
+        actuators.append(inferred_control_finding(interface, "actuation", interface["identifier"], interface.get("name"), "ros2_control command interface", 0.98))
     scope_rank = {"production": 0, "example": 1, "test": 2}
     ordered = lambda items: sorted(unique_findings(items), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("file") or "", item.get("name") or ""))
     return {"sensors": ordered(sensors), "actuation": ordered(actuators), "algorithms": ordered(algorithms)}
 
 
-def modification_points(package_reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def modification_points(package_reports: list[dict[str, Any]], ros2_control: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
     results = []
     scope_rank = {"production": 0, "example": 1, "test": 2}
 
@@ -2636,6 +2935,35 @@ def modification_points(package_reports: list[dict[str, Any]]) -> list[dict[str,
             source = max({item["file"] for item in scoped_entities}, key=lambda file: sum(item["file"] == file for item in scoped_entities))
             source_entity = next(item for item in scoped_entities if item["file"] == source)
             results.append({"task": "Change node behavior or ROS communication", "path": source, "package": package, "deployment_scope": best_scope, "reason": "source file contains ROS entities", "fact_type": "inferred", "confidence": 0.8, "evidence": source_entity["evidence"]})
+    control_guidance = (
+        ("hardware_components", "Change ros2_control hardware components and plugin wiring", "ros2_control hardware declaration detected"),
+        ("command_interfaces", "Change ros2_control command and state interfaces", "ros2_control command interface detected"),
+        ("state_interfaces", "Change ros2_control command and state interfaces", "ros2_control state interface detected"),
+        ("controllers", "Configure or implement ros2_control controllers", "ros2_control controller declaration detected"),
+        ("transmissions", "Change ros2_control transmission mappings or loaders", "ros2_control transmission declaration detected"),
+        ("plugins", "Implement or register ros2_control hardware and control plugins", "typed ros2_control plugin declaration detected"),
+    )
+    seen_control_points = set()
+    for key, task, reason in control_guidance:
+        for item in ros2_control[key]:
+            if key == "plugins" and "hardware_interface::" not in str(item.get("base_class_type") or ""):
+                continue
+            identity = (task, item.get("package"), item.get("file"), item.get("deployment_scope"))
+            if identity in seen_control_points:
+                continue
+            seen_control_points.add(identity)
+            results.append(
+                {
+                    "task": task,
+                    "path": item.get("file") or "",
+                    "package": item.get("package") or "",
+                    "deployment_scope": item.get("deployment_scope") or "production",
+                    "reason": reason,
+                    "fact_type": "inferred",
+                    "confidence": round(min(float(item.get("confidence", 0.0)), 0.94), 2),
+                    "evidence": item.get("evidence") or [],
+                }
+            )
     return sorted(results, key=lambda item: (scope_rank.get(item["deployment_scope"], 3), item["package"], item["path"], item["task"]))
 
 
@@ -3032,6 +3360,7 @@ def _scan_repository(root: Path) -> dict[str, Any]:
     launch_files = []
     urdf_transforms = []
     urdf_sensors = []
+    urdf_control = {"hardware_components": [], "transmissions": [], "command_interfaces": [], "state_interfaces": []}
     urdf_frames = set()
     for file_index, path in enumerate(scan_files, start=1):
         session.emit("scan_files", file_index - 1, len(scan_files), path, "Scanning source file")
@@ -3119,12 +3448,18 @@ def _scan_repository(root: Path) -> dict[str, Any]:
         elif path.suffix == ".xml" and path.name != "package.xml":
             report["plugins"].extend(scan_plugins(path, root))
         if path.suffix in {".urdf", ".xacro"}:
-            transforms, sensors, frames = scan_urdf(path, root)
+            transforms, sensors, frames, control_model = scan_urdf(path, root)
             for sensor in sensors:
                 sensor["package"] = package["name"]
                 sensor["deployment_scope"] = deployment_scope(sensor.get("file"), package["name"])
+            for entries in control_model.values():
+                for item in entries:
+                    item["package"] = package["name"]
+                    item["deployment_scope"] = deployment_scope(item.get("file"), package["name"])
             urdf_transforms.extend(transforms)
             urdf_sensors.extend(sensors)
+            for key, entries in control_model.items():
+                urdf_control[key].extend(entries)
             urdf_frames.update(frames)
             report["urdf_files"].append(rel_file)
     entity_keys = ("executables", "node_names", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "declared_parameters", "parameter_overrides", "plugins", "tf_broadcasters")
@@ -3152,8 +3487,9 @@ def _scan_repository(root: Path) -> dict[str, Any]:
     topics = communication_architecture(nodes, "publishers", "subscriptions", "publishers", "subscribers")
     services = communication_architecture(nodes, "service_servers", "service_clients", "servers", "clients")
     actions = communication_architecture(nodes, "action_servers", "action_clients", "servers", "clients")
-    architecture = infer_architecture(reports, urdf_sensors)
-    architecture.update({"nodes": nodes, "topics": topics, "services": services, "actions": actions, "tf": {"frames": sorted(urdf_frames), "transforms": urdf_transforms, "broadcasters": [item for report in reports for item in report["tf_broadcasters"]]}, "modification_points": modification_points(reports)})
+    ros2_control = build_ros2_control_model(reports, urdf_control)
+    architecture = infer_architecture(reports, urdf_sensors, ros2_control)
+    architecture.update({"nodes": nodes, "topics": topics, "services": services, "actions": actions, "tf": {"frames": sorted(urdf_frames), "transforms": urdf_transforms, "broadcasters": [item for report in reports for item in report["tf_broadcasters"]]}, "ros2_control": ros2_control, "modification_points": modification_points(reports, ros2_control)})
     data = {
         "schema_version": SCHEMA_VERSION,
         "scanner": {"name": "robot-doctor-static", "version": SCANNER_VERSION, "mode": "static", "fact_model": ["detected", "inferred", "diagnostic"]},
@@ -3190,8 +3526,8 @@ def _scan_repository(root: Path) -> dict[str, Any]:
         "architecture_nodes_total": len(nodes),
         "node_scopes": node_scopes,
         "topics": len(topics),
-        "services": sum(len(report["service_servers"]) + len(report["service_clients"]) for report in reports),
-        "actions": sum(len(report["action_servers"]) + len(report["action_clients"]) for report in reports),
+        "services": len(services),
+        "actions": len(actions),
         "resolved_entities": sum(1 for item in inventory_entities if item.get("resolved", True)),
         "unresolved_entities": sum(1 for item in inventory_entities if not item.get("resolved", True)),
         "skipped_files": len(session.skipped_files),

@@ -8,4 +8,30 @@
   <gazebo reference="imu_link">
     <sensor name="imu_sensor" type="imu"/>
   </gazebo>
+  <ros2_control name="ProbeSystem" type="system">
+    <hardware>
+      <plugin>probe_cpp/ProbeSystemHardware</plugin>
+    </hardware>
+    <joint name="drive_joint">
+      <command_interface name="velocity">
+        <param name="min">-2.0</param>
+        <param name="max">2.0</param>
+      </command_interface>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+    </joint>
+  </ros2_control>
+  <ros2_control name="ProbeImu" type="sensor">
+    <hardware>
+      <plugin>probe_cpp/ProbeSensorHardware</plugin>
+    </hardware>
+    <sensor name="control_imu">
+      <state_interface name="orientation.x"/>
+    </sensor>
+  </ros2_control>
+  <transmission name="drive_transmission">
+    <type>transmission_interface/SimpleTransmission</type>
+    <joint name="drive_joint"/>
+    <actuator name="drive_motor"/>
+  </transmission>
 </robot>

@@ -13,7 +13,7 @@
         "nodes": 7,
         "topics": 19,
         "services": 6,
-        "actions": 6,
+        "actions": 4,
         "max_errors": 0
       }
     },
@@ -28,8 +28,8 @@
         "launch_files": 0,
         "nodes": 72,
         "topics": 14,
-        "services": 10,
-        "actions": 15,
+        "services": 2,
+        "actions": 1,
         "max_errors": 0
       }
     },
@@ -44,8 +44,8 @@
         "launch_files": 0,
         "nodes": 95,
         "topics": 19,
-        "services": 19,
-        "actions": 4,
+        "services": 2,
+        "actions": 1,
         "max_errors": 0
       }
     },
@@ -60,8 +60,8 @@
         "launch_files": 12,
         "nodes": 123,
         "topics": 36,
-        "services": 43,
-        "actions": 15,
+        "services": 17,
+        "actions": 5,
         "max_errors": 0
       }
     },
@@ -76,8 +76,16 @@
         "launch_files": 1,
         "nodes": 58,
         "topics": 4,
-        "services": 47,
+        "services": 22,
         "actions": 0,
+        "ros2_control": {
+          "hardware_components": 2,
+          "controllers": 5,
+          "transmissions": 3,
+          "command_interfaces": 2,
+          "state_interfaces": 8,
+          "plugins": 22
+        },
         "max_errors": 0
       }
     }
@@ -93,8 +101,8 @@
         "launch_files": 13,
         "nodes": 348,
         "topics": 71,
-        "services": 119,
-        "actions": 34,
+        "services": 42,
+        "actions": 6,
         "max_errors": 0
       }
     }

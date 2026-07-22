@@ -14,6 +14,9 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 - Suppress RD101 and RD104 findings for dependencies, executables, and benchmarks detected only inside test scope.
 - Scope inferred sensors, algorithms, actuation entries, and modification points, prioritizing production guidance in rendered views.
 - Classify CMake dependencies and targets with package identity so system-test packages cannot appear as production.
+- Add a dedicated `ros2_control` model for hardware components, controllers, transmissions, command/state interfaces, and typed plugin base-class roles.
+- Keep hardware, actuator, sensor, and transmission plugins out of the generic algorithm bucket and add control-specific modification guidance.
+- Count summary services and actions as unique resolved graph interfaces, consistently with topics.
 
 ## [0.5.0] - 2026-07-22
 

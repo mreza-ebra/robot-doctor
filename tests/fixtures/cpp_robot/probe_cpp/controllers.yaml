@@ -1,0 +1,10 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 100
+    drive_controller:
+      type: probe_cpp/ProbeController
+drive_controller:
+  ros__parameters:
+    joints: [drive_joint]
+    command_interfaces: [velocity]
+    state_interfaces: [position, velocity]

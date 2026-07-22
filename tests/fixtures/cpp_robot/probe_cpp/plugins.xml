@@ -1,0 +1,6 @@
+<library path="probe_cpp_plugins">
+  <class name="probe_cpp/ProbeSystemHardware" type="probe_cpp::ProbeSystemHardware" base_class_type="hardware_interface::SystemInterface"/>
+  <class name="probe_cpp/ProbeSensorHardware" type="probe_cpp::ProbeSensorHardware" base_class_type="hardware_interface::SensorInterface"/>
+  <class name="probe_cpp/ProbeController" type="probe_cpp::ProbeController" base_class_type="controller_interface::ControllerInterface"/>
+  <class name="probe_cpp/ProbeTransmission" type="probe_cpp::ProbeTransmissionLoader" base_class_type="transmission_interface::TransmissionLoader"/>
+</library>

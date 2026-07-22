@@ -19,7 +19,7 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.5.0"},
+    "schema_version": {"const": "1.6.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
     "provenance": {"$ref": "#/$defs/provenance"},
@@ -178,6 +178,8 @@
         "class": {"type": "string"},
         "lifecycle": {"type": "boolean"},
         "role": {"type": "string"},
+        "base_class_type": {"$ref": "#/$defs/nullableString"},
+        "plugin_category": {"enum": ["hardware_actuator", "hardware_sensor", "hardware_system", "controller", "transmission", "algorithm", "plugin"]},
         "package": {"type": "string"},
         "wrapper": {"type": "object"},
         "deployment_scope": {"enum": ["production", "test", "example"]}
@@ -523,6 +525,76 @@
         "broadcasters": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
       }
     },
+    "controlResource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"enum": ["joint", "sensor", "gpio", "actuator"]}
+      }
+    },
+    "controlEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type", "role", "source", "plugin", "base_class_type", "resources", "command_interfaces", "state_interfaces", "joints", "actuators", "package", "deployment_scope", "file", "line", "fact_type", "confidence", "resolved", "evidence"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"$ref": "#/$defs/nullableString"},
+        "role": {"type": "string"},
+        "source": {"enum": ["urdf", "pluginlib", "parameter"]},
+        "plugin": {"$ref": "#/$defs/nullableString"},
+        "base_class_type": {"$ref": "#/$defs/nullableString"},
+        "resources": {"type": "array", "items": {"$ref": "#/$defs/controlResource"}},
+        "command_interfaces": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "state_interfaces": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "joints": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "actuators": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "package": {"type": "string"},
+        "deployment_scope": {"enum": ["production", "test", "example"]},
+        "file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "controlInterface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["identifier", "name", "resource", "resource_type", "component", "component_type", "parameters", "package", "deployment_scope", "file", "line", "fact_type", "confidence", "resolved", "evidence"],
+      "properties": {
+        "identifier": {"type": "string"},
+        "name": {"type": "string"},
+        "resource": {"type": "string"},
+        "resource_type": {"enum": ["joint", "sensor", "gpio", "actuator"]},
+        "component": {"type": "string"},
+        "component_type": {"type": "string"},
+        "parameters": {"type": "object", "additionalProperties": {"type": "string"}},
+        "package": {"type": "string"},
+        "deployment_scope": {"enum": ["production", "test", "example"]},
+        "file": {"type": "string"},
+        "line": {"$ref": "#/$defs/nullableInteger"},
+        "fact_type": {"const": "detected"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
+    "ros2Control": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hardware_components", "controllers", "transmissions", "command_interfaces", "state_interfaces", "plugins"],
+      "properties": {
+        "hardware_components": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
+        "controllers": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
+        "transmissions": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
+        "command_interfaces": {"type": "array", "items": {"$ref": "#/$defs/controlInterface"}},
+        "state_interfaces": {"type": "array", "items": {"$ref": "#/$defs/controlInterface"}},
+        "plugins": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}}
+      }
+    },
     "modificationPoint": {
       "type": "object",
       "additionalProperties": false,
@@ -541,7 +613,7 @@
     "architecture": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["sensors", "actuation", "algorithms", "nodes", "topics", "services", "actions", "tf", "modification_points"],
+      "required": ["sensors", "actuation", "algorithms", "nodes", "topics", "services", "actions", "tf", "ros2_control", "modification_points"],
       "properties": {
         "sensors": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
         "actuation": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
@@ -551,6 +623,7 @@
         "services": {"type": "array", "items": {"$ref": "#/$defs/serviceActionGraph"}},
         "actions": {"type": "array", "items": {"$ref": "#/$defs/serviceActionGraph"}},
         "tf": {"$ref": "#/$defs/tf"},
+        "ros2_control": {"$ref": "#/$defs/ros2Control"},
         "modification_points": {"type": "array", "items": {"$ref": "#/$defs/modificationPoint"}}
       }
     },

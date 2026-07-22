@@ -77,6 +77,44 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertTrue(any(item["name"] == "imu_sensor" for item in data["architecture"]["sensors"]))
         self.assertNotIn("RD104", {item["code"] for item in data["diagnostics"]})
 
+    def test_ros2_control_model_covers_hardware_interfaces_plugins_and_guidance(self):
+        data = ros_repo_discover.scan_repository(FIXTURES / "cpp_robot")
+        control = data["architecture"]["ros2_control"]
+
+        component = next(item for item in control["hardware_components"] if item["name"] == "ProbeSystem")
+        self.assertEqual(component["plugin"], "probe_cpp/ProbeSystemHardware")
+        self.assertEqual(component["command_interfaces"], ["drive_joint/velocity"])
+        self.assertEqual(component["state_interfaces"], ["drive_joint/position", "drive_joint/velocity"])
+        command = next(item for item in control["command_interfaces"] if item["identifier"] == "drive_joint/velocity")
+        self.assertEqual(command["parameters"], {"min": "-2.0", "max": "2.0"})
+        self.assertIn("ProbeImu", {item["name"] for item in control["hardware_components"]})
+        self.assertIn("control_imu/orientation.x", {item["identifier"] for item in control["state_interfaces"]})
+        configured_controller = next(item for item in control["controllers"] if item["name"] == "drive_controller")
+        self.assertEqual(configured_controller["joints"], ["drive_joint"])
+        self.assertEqual(configured_controller["command_interfaces"], ["velocity"])
+        self.assertEqual(configured_controller["state_interfaces"], ["position", "velocity"])
+        self.assertIn("drive_transmission", {item["name"] for item in control["transmissions"]})
+        self.assertIn("probe_cpp/ProbeTransmission", {item["name"] for item in control["transmissions"]})
+
+        plugins = {item["name"]: item for item in control["plugins"]}
+        self.assertEqual(plugins["probe_cpp/ProbeSystemHardware"]["base_class_type"], "hardware_interface::SystemInterface")
+        self.assertEqual(plugins["probe_cpp/ProbeController"]["role"], "ros2_control controller")
+        algorithm_names = {item["name"] for item in data["architecture"]["algorithms"]}
+        actuation_names = {item["name"] for item in data["architecture"]["actuation"]}
+        sensor_names = {item["name"] for item in data["architecture"]["sensors"]}
+        self.assertIn("probe_cpp/ProbeController", algorithm_names)
+        self.assertNotIn("probe_cpp/ProbeSystemHardware", algorithm_names)
+        self.assertIn("probe_cpp/ProbeSystemHardware", actuation_names)
+        self.assertIn("drive_joint/velocity", actuation_names)
+        self.assertIn("probe_cpp/ProbeSensorHardware", sensor_names)
+        self.assertIn("ProbeImu", sensor_names)
+        self.assertNotIn("control_imu", sensor_names)
+        modification_tasks = {item["task"] for item in data["architecture"]["modification_points"]}
+        self.assertIn("Change ros2_control hardware components and plugin wiring", modification_tasks)
+        self.assertIn("Configure or implement ros2_control controllers", modification_tasks)
+        self.assertIn("Change ros2_control transmission mappings or loaders", modification_tasks)
+        self.assertEqual(data["summary"]["services"], len(data["architecture"]["services"]))
+
     def test_launch_graph_covers_python_xml_yaml_and_composition(self):
         data = ros_repo_discover.scan_repository(FIXTURES / "launch_robot")
         launch_files = data["launch_graph"]["files"]
@@ -554,7 +592,7 @@ void imu_case()
             report_path = generate_project_overviews.write_documents(TURTLEBOT4, Path(directory))[0]
             basic_report = report_path.read_text(encoding="utf-8")
         self.assertIn("| Services | 6 |", basic_report)
-        self.assertIn("| Actions | 6 |", basic_report)
+        self.assertIn("| Actions | 4 |", basic_report)
         self.assertIn("| Topics | 19 |", basic_report)
         self.assertNotIn("urdf/gazebo sensor", basic_report)
         self.assertNotIn("topic_nh", basic_report)
@@ -574,6 +612,9 @@ void imu_case()
         self.assertEqual(definitions["architecture"]["properties"]["nodes"]["items"]["$ref"], "#/$defs/node")
         self.assertEqual(definitions["architecture"]["properties"]["services"]["items"]["$ref"], "#/$defs/serviceActionGraph")
         self.assertEqual(definitions["architecture"]["properties"]["actions"]["items"]["$ref"], "#/$defs/serviceActionGraph")
+        self.assertEqual(definitions["architecture"]["properties"]["ros2_control"]["$ref"], "#/$defs/ros2Control")
+        self.assertEqual(definitions["ros2Control"]["properties"]["hardware_components"]["items"]["$ref"], "#/$defs/controlEntity")
+        self.assertEqual(definitions["ros2Control"]["properties"]["command_interfaces"]["items"]["$ref"], "#/$defs/controlInterface")
         self.assertTrue({"kind", "name", "type", "file", "line", "confidence", "resolved", "evidence"} <= set(definitions["finding"]["required"]))
         self.assertTrue({"file", "format", "package", "actions", "includes", "arguments", "confidence", "evidence"} <= set(definitions["launchFile"]["required"]))
         self.assertTrue({"id", "name", "namespace", "package", "origin", "active", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "parameters", "confidence", "evidence"} <= set(definitions["node"]["required"]))

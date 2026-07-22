@@ -42,10 +42,16 @@ def validate_scan(name: str, path: Path, expected: dict[str, Any]) -> list[str]:
     for field in ("packages", "launch_files", "nodes", "topics", "services", "actions"):
         if summary[field] != expected[field]:
             failures.append(f"{name}: expected {field}={expected[field]}, found {summary[field]}")
+    control_counts = {field: len(records) for field, records in data["architecture"]["ros2_control"].items()}
+    for field, count in expected.get("ros2_control", {}).items():
+        if control_counts[field] != count:
+            failures.append(f"{name}: expected ros2_control.{field}={count}, found {control_counts[field]}")
     errors = summary["diagnostics"].get("error", 0)
     if errors > expected.get("max_errors", 0):
         failures.append(f"{name}: expected at most {expected['max_errors']} error diagnostics, found {errors}")
     counts = ", ".join(f"{field}={summary[field]}" for field in ("packages", "launch_files", "nodes", "topics", "services", "actions"))
+    if expected.get("ros2_control"):
+        counts += ", ros2_control=" + "/".join(f"{field}:{control_counts[field]}" for field in expected["ros2_control"])
     print(f"PASS {name}: {counts}, errors={errors}" if not failures else f"FAIL {name}: {counts}, errors={errors}")
     return failures
 
