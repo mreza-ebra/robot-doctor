@@ -202,20 +202,25 @@ def architecture_diagram(data: dict[str, Any]) -> str:
 def ros2_control_diagram(data: dict[str, Any]) -> str:
     control = data["architecture"]["ros2_control"]
     lines = ["```mermaid", "flowchart LR"]
-    if control["state_interfaces"]:
-        lines.append('  hardware["Hardware components"] -->|"state interfaces"| controllers["Controllers"]')
-    else:
-        lines.append('  hardware["Hardware components"] --> controllers["Controllers"]')
-    if control["command_interfaces"]:
-        lines.append('  controllers -->|"command interfaces"| hardware')
-    if control["transmissions"]:
-        lines.append('  hardware --> transmissions["Transmissions"] --> resources["Joints / actuators"]')
-    if control["plugins"]:
-        lines.append('  plugins["Pluginlib declarations"] -.-> hardware')
-        lines.append('  plugins -.-> controllers')
-        lines.append('  plugins -.-> transmissions')
-    if not any(control.values()):
-        lines = ["```mermaid", "flowchart LR", '  none["No ros2_control declarations detected"]']
+    for index, chain in enumerate(control["control_chains"]):
+        controller_id = f"control_controller_{index}"
+        interface_id = f"control_interface_{index}"
+        hardware_id = f"control_hardware_{index}"
+        resource_id = f"control_resource_{index}"
+        controller = chain.get("controller") or "Unclaimed controller"
+        hardware = chain.get("hardware_component") or "Unresolved hardware"
+        resource = chain.get("resource") or "Unresolved resource"
+        style = "-.->" if not chain.get("resolved") else "-->"
+        lines.append(f'  {controller_id}["{controller}"] {style} {interface_id}(("{chain.get("command_interface") or "Unresolved interface"}"))')
+        lines.append(f'  {interface_id} {style} {hardware_id}["{hardware}"]')
+        lines.append(f'  {hardware_id} {style} {resource_id}["{resource}"]')
+        if chain.get("transmission"):
+            transmission_id = f"control_transmission_{index}"
+            lines.append(f'  {resource_id} --> {transmission_id}["{chain["transmission"]}"]')
+            for actuator_index, actuator in enumerate(chain.get("actuators", [])):
+                lines.append(f'  {transmission_id} --> control_actuator_{index}_{actuator_index}["{actuator}"]')
+    if not control["control_chains"]:
+        lines.append('  none["No command-interface control chains inferred"]')
     lines.append("```")
     return "\n".join(lines)
 
@@ -347,6 +352,25 @@ def ros2_control_rows(data: dict[str, Any]) -> list[list[Any]]:
                 certainty(item),
             ])
     return rows
+
+
+def control_chain_rows(data: dict[str, Any]) -> list[list[Any]]:
+    return [
+        [
+            item.get("package") or "",
+            item.get("deployment_scope") or "production",
+            item.get("controller") or "<unclaimed>",
+            item.get("command_interface") or "<unresolved>",
+            item.get("hardware_component") or "<unresolved>",
+            item.get("resource") or "<unresolved>",
+            item.get("transmission") or "direct / not detected",
+            item.get("actuators") or [],
+            item.get("resolved", False),
+            certainty(item),
+            first_evidence(item),
+        ]
+        for item in data["architecture"]["ros2_control"]["control_chains"]
+    ]
 
 
 def launch_rows(data: dict[str, Any]) -> list[list[Any]]:
@@ -484,6 +508,8 @@ This flow is an architectural summary, not a proven runtime graph. Component rol
 
 {md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data)[:15])}
 
+{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Hardware', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
+
 ## Where To Make Changes
 
 {md_table(['Task', 'Package', 'Scope', 'Path', 'Why this path', 'Certainty', 'Evidence'], modification_rows(data))}
@@ -572,6 +598,10 @@ def intermediate_document(root: Path, data: dict[str, Any]) -> str:
 {ros2_control_diagram(data)}
 
 {md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data))}
+
+### Controller-To-Hardware Chains
+
+{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Hardware', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
 
 ## Sensors, Algorithms, And Actuation
 
@@ -703,6 +733,10 @@ def expert_document(root: Path, data: dict[str, Any]) -> str:
 {ros2_control_diagram(data)}
 
 {md_table(['Category', 'Package', 'Scope', 'Name', 'Type', 'Role', 'Source', 'Details', 'Location', 'Certainty'], ros2_control_rows(data))}
+
+### Controller-To-Hardware Chains
+
+{md_table(['Package', 'Scope', 'Controller', 'Command interface', 'Hardware', 'Joint/resource', 'Transmission', 'Actuators', 'Resolved', 'Certainty', 'Evidence'], control_chain_rows(data))}
 
 ## Inferred Architecture
 

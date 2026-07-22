@@ -1,0 +1,18 @@
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:macro name="probe_control" params="system_name joint_name plugin_name command:=effort">
+    <ros2_control name="${system_name}" type="system">
+      <hardware>
+        <plugin>${plugin_name}</plugin>
+      </hardware>
+      <joint name="${joint_name}">
+        <command_interface name="${command}"/>
+        <state_interface name="position"/>
+      </joint>
+    </ros2_control>
+    <transmission name="${joint_name}_transmission">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="${joint_name}"/>
+      <actuator name="${joint_name}_motor"/>
+    </transmission>
+  </xacro:macro>
+</robot>

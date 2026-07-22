@@ -1,0 +1,9 @@
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="control_macro.xacro"/>
+  <xacro:property name="generated_joint" value="lift_joint"/>
+  <xacro:probe_control
+    system_name="GeneratedLiftSystem"
+    joint_name="${generated_joint}"
+    plugin_name="probe_cpp/GeneratedLiftHardware"
+    command="position"/>
+</robot>

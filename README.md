@@ -7,7 +7,8 @@ Robot Doctor statically inventories and diagnoses ROS 2 source repositories with
 - Discovers packages while excluding `build/`, `install/`, `log/`, version-control data, and trees marked by `COLCON_IGNORE` or `AMENT_IGNORE`.
 - Extracts positional and keyword-based Python ROS APIs with the Python AST, plus C++ entities and generic wrapper instantiations with balanced-call parsing.
 - Finds nodes, publishers, subscribers, services, actions, parameters, QoS, lifecycle nodes, executables, custom interface fields, URDF transforms, sensors, and plugin declarations.
-- Models `ros2_control` hardware components, controllers, transmissions, command/state interfaces, and plugin base-class roles; hardware plugins are separated from control algorithms.
+- Models `ros2_control` hardware components, controllers, transmissions, command/state interfaces, plugin base-class roles, and controller-to-hardware command chains; hardware plugins are separated from control algorithms.
+- Expands deterministic repository-local Xacro macro declarations without executing Xacro, Python, shell commands, or repository code; unsupported expressions remain unresolved.
 - Inventories Python executables from `setup.py`, `setup.cfg`, and `pyproject.toml` entry points.
 - Builds launch graphs from Python, XML, and YAML launch files, including local includes, arguments, conditions, namespaces, remappings, parameter sources, and composed nodes.
 - Builds node-level communication graphs with launch namespaces/remappings and typed parameter override precedence.
@@ -81,12 +82,12 @@ python3 tools/robot_doctor_web.py
 
 ## Output Contract
 
-JSON output uses schema version `1.6.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. Architecture nodes, interfaces, inferred roles, `ros2_control` entities, and modification points include `production`, `test`, or `example` deployment scope so test fixtures do not contaminate production guidance or diagnostics. Summary topic, service, and action counts represent unique resolved graph names rather than endpoint totals. The top-level sections are:
+JSON output uses schema version `1.7.0`; its machine-readable contract is in `schemas/robot_doctor_scan.schema.json` and is bundled in the installed `robot_doctor` package. Architecture nodes, interfaces, inferred roles, `ros2_control` entities, and modification points include `production`, `test`, or `example` deployment scope so test fixtures do not contaminate production guidance or diagnostics. Summary topic, service, and action counts represent unique resolved graph names rather than endpoint totals. Rendered HTML inventory tables contain every detected row; only the compact topology preview is intentionally summarized and states its displayed count. The top-level sections are:
 
 - `packages`: source-backed package and entity inventories.
 - `configuration`: effective limits, diagnostic policy, and suppressed-diagnostic count.
 - `launch_graph`: launch files, actions, includes, and include edges.
-- `architecture`: source and launched nodes, resolved topic/service/action graphs, effective node parameters, TF/URDF data, a dedicated `ros2_control` model, inferred sensors, algorithms, actuation, and modification points.
+- `architecture`: source and launched nodes, resolved topic/service/action graphs, effective node parameters, TF/URDF data, a dedicated `ros2_control` model with inferred command chains, inferred sensors, algorithms, actuation, and modification points.
 - `diagnostics`: checks with stable codes, severity, evidence, confidence, repair steps, verification commands, suggested files, and patch hints.
 - `provenance`: timestamps, duration, Git state, input type, ZIP archive/content SHA-256 when applicable, ROS distribution, Python version, and operating-system metadata needed to reproduce a scan.
 - `limitations`: explicit boundaries of static analysis.

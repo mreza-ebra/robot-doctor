@@ -306,6 +306,39 @@ class SelfServiceTests(unittest.TestCase):
         self.assertIn('<option value="probe_py" selected>', rendered)
         self.assertIn('<details class="finding finding-info">', rendered)
 
+    def test_inventory_tables_render_all_rows_and_control_chains(self):
+        nodes = [
+            {
+                "name": f"node_{index}",
+                "package": "probe",
+                "namespace": "/",
+                "origin": "source",
+                "deployment_scope": "production",
+                "active": True,
+                "publishers": [],
+                "subscriptions": [],
+                "service_servers": [],
+                "service_clients": [],
+                "action_servers": [],
+                "action_clients": [],
+            }
+            for index in range(35)
+        ]
+        topics = [
+            {"name": f"topic_{index}", "types": [], "deployment_scopes": ["production"], "publishers": [], "subscribers": []}
+            for index in range(35)
+        ]
+        data = {"architecture": {"nodes": nodes, "topics": topics}}
+
+        self.assertIn("node_34", web_module.node_table(data))
+        self.assertIn("topic_34", web_module.interface_table(data, "topics", "publishers", "subscribers"))
+
+        control_data = scan_repository(WORKSPACE / "tests" / "fixtures" / "cpp_robot")
+        rendered = result_body(control_data)
+        self.assertIn("ros2_control command chains", rendered)
+        self.assertIn("drive_controller", rendered)
+        self.assertIn("drive_joint/velocity", rendered)
+
     def test_docker_one_command_assets_are_local_only(self):
         compose = (WORKSPACE / "compose.yaml").read_text(encoding="utf-8")
         dockerfile = (WORKSPACE / "Dockerfile").read_text(encoding="utf-8")

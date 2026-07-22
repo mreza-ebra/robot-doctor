@@ -31,7 +31,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 compatibility
     import tomli as tomllib
 
 
-SCHEMA_VERSION = "1.6.0"
+SCHEMA_VERSION = "1.7.0"
 SCANNER_VERSION = "0.6.0.dev0"
 IGNORED_DIRECTORY_NAMES = {
     ".git",
@@ -2009,7 +2009,148 @@ def control_parameters(fragment: str) -> dict[str, str]:
     }
 
 
-def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]]]:
+XACRO_MACRO_PATTERN = re.compile(r"<xacro:macro\b([^>]*)>(.*?)</xacro:macro\s*>", re.DOTALL)
+XACRO_INVOCATION_PATTERN = re.compile(r"<xacro:([A-Za-z_][A-Za-z0-9_.-]*)\b([^>]*?)(?:/\s*>|>(.*?)</xacro:\1\s*>)", re.DOTALL)
+
+
+def mask_xacro_macro_definitions(text: str) -> str:
+    return XACRO_MACRO_PATTERN.sub(lambda match: "".join("\n" if character == "\n" else " " for character in match.group(0)), text)
+
+
+def xacro_parameter_defaults(specification: str) -> dict[str, str | None]:
+    try:
+        tokens = shlex.split(specification)
+    except ValueError:
+        tokens = specification.split()
+    parameters = {}
+    for token in tokens:
+        token = token.removeprefix("^|").lstrip("*")
+        if not token:
+            continue
+        name, separator, default = token.partition(":=")
+        parameters[name] = default if separator else None
+    return parameters
+
+
+def discover_xacro_macros(paths: Iterable[Path], root: Path) -> dict[str, list[dict[str, Any]]]:
+    macros: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for path in paths:
+        if path.suffix != ".xacro":
+            continue
+        text = read_text(path)
+        rel_file = relative(path, root)
+        for match in XACRO_MACRO_PATTERN.finditer(text):
+            attributes = xml_attributes(match.group(1))
+            name = attributes.get("name")
+            if not name:
+                continue
+            macros[name].append(
+                {
+                    "name": name,
+                    "parameters": xacro_parameter_defaults(attributes.get("params", "")),
+                    "body": match.group(2),
+                    "file": rel_file,
+                    "line": line_number(text, match.start()),
+                    "body_line": line_number(text, match.start(2)),
+                    "snippet": match.group(0),
+                }
+            )
+    return macros
+
+
+def xacro_document_values(text: str) -> dict[str, str]:
+    values = {}
+    for match in re.finditer(r"<xacro:(?:property|arg)\b([^>]*)/?>", text):
+        attributes = xml_attributes(match.group(1))
+        name = attributes.get("name")
+        value = attributes.get("value", attributes.get("default"))
+        if name and value is not None:
+            values[name] = value
+    return values
+
+
+def substitute_xacro_values(value: str, values: dict[str, str]) -> str:
+    result = value
+    for _ in range(6):
+        previous = result
+        result = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", lambda match: values.get(match.group(1), match.group(0)), result)
+        result = re.sub(r"\$\(arg\s+([A-Za-z_][A-Za-z0-9_]*)\)", lambda match: values.get(match.group(1), match.group(0)), result)
+        if result == previous:
+            break
+    return result
+
+
+def select_xacro_macro(name: str, consumer_file: str, macros: dict[str, list[dict[str, Any]]]) -> dict[str, Any] | None:
+    candidates = macros.get(name, [])
+    local = [item for item in candidates if item["file"] == consumer_file]
+    if len(local) == 1:
+        return local[0]
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def render_xacro_macro(
+    name: str,
+    invocation_attributes: dict[str, str],
+    consumer_file: str,
+    macros: dict[str, list[dict[str, Any]]],
+    inherited_values: dict[str, str],
+    depth: int = 0,
+) -> tuple[str | None, dict[str, Any] | None, bool]:
+    definition = select_xacro_macro(name, consumer_file, macros)
+    if definition is None or depth >= 6:
+        return None, definition, False
+    values = dict(inherited_values)
+    for parameter, default in definition["parameters"].items():
+        if default is not None:
+            values[parameter] = substitute_xacro_values(default, values)
+    values.update({key: substitute_xacro_values(value, values) for key, value in invocation_attributes.items()})
+    values.update({key: substitute_xacro_values(value, values) for key, value in xacro_document_values(definition["body"]).items()})
+    rendered = substitute_xacro_values(definition["body"], values)
+
+    def expand_nested(match: re.Match[str]) -> str:
+        nested_name = match.group(1)
+        nested, _, _ = render_xacro_macro(
+            nested_name,
+            xml_attributes(match.group(2)),
+            definition["file"],
+            macros,
+            values,
+            depth + 1,
+        )
+        return nested if nested is not None else match.group(0)
+
+    rendered = XACRO_INVOCATION_PATTERN.sub(expand_nested, rendered)
+    resolved = not re.search(r"\$\{|\$\(arg\s|<xacro:[A-Za-z_]", rendered)
+    return rendered, definition, resolved
+
+
+def expand_xacro_control_fragments(text: str, rel_file: str, macros: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    fragments = []
+    values = xacro_document_values(text)
+    source = mask_xacro_macro_definitions(text)
+    for match in XACRO_INVOCATION_PATTERN.finditer(source):
+        rendered, definition, resolved = render_xacro_macro(match.group(1), xml_attributes(match.group(2)), rel_file, macros, values)
+        if rendered is None or definition is None or not re.search(r"<(?:ros2_control|transmission)\b", rendered):
+            continue
+        invocation_line = line_number(text, match.start())
+        fragments.append(
+            {
+                "text": rendered,
+                "file": definition["file"],
+                "base_line": definition["body_line"],
+                "source": "xacro",
+                "confidence": 0.92 if resolved else 0.72,
+                "resolved": resolved,
+                "extra_evidence": [
+                    evidence(rel_file, invocation_line, "xacro_macro_invocation", match.group(0)),
+                    evidence(definition["file"], definition["line"], "xacro_macro_definition", definition["snippet"]),
+                ],
+            }
+        )
+    return fragments
+
+
+def scan_ros2_control(text: str, rel_file: str, context: dict[str, Any] | None = None) -> dict[str, list[dict[str, Any]]]:
     model: dict[str, list[dict[str, Any]]] = {
         "hardware_components": [],
         "transmissions": [],
@@ -2019,6 +2160,23 @@ def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]
     component_pattern = re.compile(r"<ros2_control\b([^>]*)>(.*?)</ros2_control>", re.DOTALL)
     resource_pattern = re.compile(r"<(joint|sensor|gpio)\b([^>]*)>(.*?)</\1>", re.DOTALL)
     interface_pattern = re.compile(r"<(command_interface|state_interface)\b([^>]*?)(?:/\s*>|>(.*?)</\1>)", re.DOTALL)
+
+    def metadata(offset: int, extractor: str, snippet: str, confidence: float, dynamic: bool) -> dict[str, Any]:
+        source_file = context.get("file", rel_file) if context else rel_file
+        source_line = line_number(text, offset)
+        if context:
+            source_line += int(context.get("base_line", 1)) - 1
+            extractor = "xacro_macro_expansion"
+            confidence = min(confidence, float(context.get("confidence", confidence)))
+        if dynamic:
+            confidence = min(confidence, 0.72)
+        return {
+            "file": source_file,
+            "line": source_line,
+            "confidence": confidence,
+            "evidence": [evidence(source_file, source_line, extractor, snippet), *((context or {}).get("extra_evidence") or [])],
+        }
+
     for component_match in component_pattern.finditer(text):
         attributes = xml_attributes(component_match.group(1))
         component_name = attributes.get("name") or "<unnamed ros2_control component>"
@@ -2043,6 +2201,7 @@ def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]
                 identifier = f"{resource_name}/{interface_name}"
                 interface_offset = component_match.start(2) + resource_match.start(3) + interface_match.start()
                 dynamic = any(token in value for value in (component_name, resource_name, interface_name) for token in ("${", "$("))
+                source = metadata(interface_offset, "ros2_control_urdf", interface_match.group(0), 0.98, dynamic)
                 record = {
                     "identifier": identifier,
                     "name": interface_name,
@@ -2050,24 +2209,25 @@ def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]
                     "resource_type": resource_type,
                     "component": component_name,
                     "component_type": component_type,
+                    "source": context.get("source", "urdf") if context else "urdf",
                     "parameters": control_parameters(interface_match.group(3) or ""),
-                    "file": rel_file,
-                    "line": line_number(text, interface_offset),
+                    "file": source["file"],
+                    "line": source["line"],
                     "fact_type": "detected",
-                    "confidence": 0.98 if not dynamic else 0.72,
-                    "resolved": not dynamic,
-                    "evidence": [evidence(rel_file, line_number(text, interface_offset), "ros2_control_urdf", interface_match.group(0))],
+                    "confidence": source["confidence"],
+                    "resolved": not dynamic and (context is None or context.get("resolved", False)),
+                    "evidence": source["evidence"],
                 }
                 model["command_interfaces" if interface_kind == "command_interface" else "state_interfaces"].append(record)
                 (command_identifiers if interface_kind == "command_interface" else state_identifiers).append(identifier)
-        component_line = line_number(text, component_match.start())
         dynamic = any(token in value for value in (component_name, component_type, plugin or "") for token in ("${", "$("))
+        source = metadata(component_match.start(), "ros2_control_urdf", component_match.group(0), 0.98, dynamic)
         model["hardware_components"].append(
             {
                 "name": component_name,
                 "type": component_type,
                 "role": f"ros2_control {component_type} hardware component",
-                "source": "urdf",
+                "source": context.get("source", "urdf") if context else "urdf",
                 "plugin": plugin,
                 "base_class_type": None,
                 "resources": resources,
@@ -2075,12 +2235,12 @@ def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]
                 "state_interfaces": sorted(set(state_identifiers)),
                 "joints": sorted({item["name"] for item in resources if item["type"] == "joint"}),
                 "actuators": sorted({item["name"] for item in resources if item["type"] == "actuator"}),
-                "file": rel_file,
-                "line": component_line,
+                "file": source["file"],
+                "line": source["line"],
                 "fact_type": "detected",
-                "confidence": 0.98 if not dynamic else 0.72,
-                "resolved": not dynamic,
-                "evidence": [evidence(rel_file, component_line, "ros2_control_urdf", component_match.group(0))],
+                "confidence": source["confidence"],
+                "resolved": not dynamic and (context is None or context.get("resolved", False)),
+                "evidence": source["evidence"],
             }
         )
     transmission_pattern = re.compile(r"<transmission\b([^>]*)>(.*?)</transmission>", re.DOTALL)
@@ -2092,14 +2252,14 @@ def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]
         transmission_type = html_lib.unescape(type_match.group(1).strip()) if type_match else None
         joints = [xml_attributes(item.group(1)).get("name") for item in re.finditer(r"<joint\b([^>]*)>", body)]
         actuators = [xml_attributes(item.group(1)).get("name") for item in re.finditer(r"<actuator\b([^>]*)>", body)]
-        transmission_line = line_number(text, match.start())
         dynamic = any(token in str(value or "") for value in (name, transmission_type) for token in ("${", "$("))
+        source = metadata(match.start(), "urdf_transmission", match.group(0), 0.96, dynamic)
         model["transmissions"].append(
             {
                 "name": name,
                 "type": transmission_type,
                 "role": "ros2_control transmission mapping",
-                "source": "urdf",
+                "source": context.get("source", "urdf") if context else "urdf",
                 "plugin": transmission_type,
                 "base_class_type": None,
                 "resources": [],
@@ -2107,18 +2267,18 @@ def scan_ros2_control(text: str, rel_file: str) -> dict[str, list[dict[str, Any]
                 "state_interfaces": [],
                 "joints": sorted({item for item in joints if item}),
                 "actuators": sorted({item for item in actuators if item}),
-                "file": rel_file,
-                "line": transmission_line,
+                "file": source["file"],
+                "line": source["line"],
                 "fact_type": "detected",
-                "confidence": 0.96 if not dynamic else 0.72,
-                "resolved": not dynamic,
-                "evidence": [evidence(rel_file, transmission_line, "urdf_transmission", match.group(0))],
+                "confidence": source["confidence"],
+                "resolved": not dynamic and (context is None or context.get("resolved", False)),
+                "evidence": source["evidence"],
             }
         )
     return model
 
 
-def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, list[dict[str, Any]]]]:
+def scan_urdf(path: Path, root: Path, xacro_macros: dict[str, list[dict[str, Any]]] | None = None) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], dict[str, list[dict[str, Any]]]]:
     text = read_text(path)
     rel_file = relative(path, root)
     transforms = []
@@ -2130,8 +2290,9 @@ def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[s
         child = re.search(r"<child\b[^>]*\blink\s*=\s*['\"]([^'\"]+)", match.group(2))
         if parent and child:
             transforms.append({"parent": parent.group(1), "child": child.group(1), "joint": match.group(1), "file": rel_file, "line": line_number(text, match.start()), "fact_type": "detected", "confidence": 0.98, "evidence": [evidence(rel_file, line_number(text, match.start()), "urdf_parser", match.group(0))]})
-    control_spans = [match.span() for match in re.finditer(r"<ros2_control\b[^>]*>.*?</ros2_control>", text, re.DOTALL)]
-    for match in re.finditer(r"<sensor\b([^>]*)>", text):
+    literal_text = mask_xacro_macro_definitions(text) if path.suffix == ".xacro" else text
+    control_spans = [match.span() for match in re.finditer(r"<ros2_control\b[^>]*>.*?</ros2_control>", literal_text, re.DOTALL)]
+    for match in re.finditer(r"<sensor\b([^>]*)>", literal_text):
         if any(start <= match.start() < end for start, end in control_spans):
             continue
         attributes = match.group(1)
@@ -2141,7 +2302,13 @@ def scan_urdf(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[s
             name = name_match.group(1) if name_match else type_match.group(1)
             dynamic = "${" in name or "$(" in name
             sensors.append(finding("sensor", name, type_match.group(1) if type_match else "urdf sensor", rel_file, line_number(text, match.start()), "urdf_sensor_parser", match.group(0), confidence=0.96 if not dynamic else 0.72, resolved=not dynamic))
-    return transforms, sensors, sorted(frames), scan_ros2_control(text, rel_file)
+    control_model = scan_ros2_control(literal_text, rel_file)
+    if path.suffix == ".xacro" and xacro_macros:
+        for fragment in expand_xacro_control_fragments(text, rel_file, xacro_macros):
+            expanded = scan_ros2_control(fragment["text"], rel_file, fragment)
+            for key, entries in expanded.items():
+                control_model[key].extend(entries)
+    return transforms, sensors, sorted(frames), control_model
 
 
 def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any]:
@@ -2777,6 +2944,119 @@ def control_entity_from_plugin(plugin: dict[str, Any], package_name: str) -> dic
     }
 
 
+def control_chain_evidence(*items: dict[str, Any] | None) -> list[dict[str, Any]]:
+    results = []
+    seen = set()
+    for item in items:
+        for record in (item or {}).get("evidence", []):
+            key = (record.get("file"), record.get("line"), record.get("extractor"), record.get("snippet"))
+            if key not in seen:
+                seen.add(key)
+                results.append(record)
+    return results
+
+
+def controller_claims_interface(controller: dict[str, Any], interface: dict[str, Any]) -> bool:
+    joints = set(controller.get("joints") or [])
+    commands = set(controller.get("command_interfaces") or [])
+    resource = str(interface.get("resource") or "")
+    identifier = str(interface.get("identifier") or "")
+    interface_name = str(interface.get("name") or "")
+    joint_matches = resource in joints or any(value.startswith(resource + "/") for value in commands)
+    command_matches = interface_name in commands or identifier in commands or any(value.endswith("/" + interface_name) for value in commands)
+    return bool(joint_matches and command_matches)
+
+
+def build_control_chains(model: dict[str, list[dict[str, Any]]]) -> list[dict[str, Any]]:
+    components = {(item["package"], item["name"]): item for item in model["hardware_components"]}
+    configured_controllers = [item for item in model["controllers"] if item.get("source") == "parameter"]
+    transmissions = [item for item in model["transmissions"] if item.get("source") in {"urdf", "xacro"}]
+    chains = []
+    for interface in model["command_interfaces"]:
+        controllers = [item for item in configured_controllers if controller_claims_interface(item, interface)]
+        component = components.get((interface.get("package"), interface.get("component")))
+        transmission_candidates = [item for item in transmissions if interface.get("resource") in item.get("joints", [])]
+        local_transmissions = [item for item in transmission_candidates if item.get("package") == interface.get("package")]
+        matching_transmissions = local_transmissions or transmission_candidates
+        for controller in controllers or [None]:
+            for transmission in matching_transmissions or [None]:
+                scopes = [interface.get("deployment_scope"), (component or {}).get("deployment_scope"), (controller or {}).get("deployment_scope"), (transmission or {}).get("deployment_scope")]
+                resolved = bool(controller and component and controller.get("resolved") and component.get("resolved") and interface.get("resolved"))
+                confidence = min(
+                    [float(item.get("confidence", 0.0)) for item in (controller, interface, component, transmission) if item],
+                    default=0.0,
+                )
+                if controller is None:
+                    confidence = min(confidence, 0.65)
+                chain_id = ":".join(
+                    str(value or "unresolved")
+                    for value in (
+                        (controller or {}).get("package"),
+                        (controller or {}).get("name"),
+                        interface.get("package"),
+                        interface.get("identifier"),
+                        (component or {}).get("name"),
+                        (transmission or {}).get("name"),
+                    )
+                )
+                chains.append(
+                    {
+                        "id": chain_id,
+                        "controller": (controller or {}).get("name"),
+                        "controller_type": (controller or {}).get("type"),
+                        "command_interface": interface.get("identifier"),
+                        "interface_name": interface.get("name"),
+                        "hardware_component": (component or {}).get("name"),
+                        "hardware_plugin": (component or {}).get("plugin"),
+                        "resource": interface.get("resource"),
+                        "resource_type": interface.get("resource_type"),
+                        "transmission": (transmission or {}).get("name"),
+                        "actuators": list((transmission or {}).get("actuators") or []),
+                        "package": (controller or interface).get("package") or "",
+                        "deployment_scope": combined_deployment_scope(*scopes),
+                        "fact_type": "inferred",
+                        "confidence": round(min(confidence, 0.92), 2),
+                        "resolved": resolved,
+                        "evidence": control_chain_evidence(controller, interface, component, transmission),
+                    }
+                )
+    available_interfaces = {item["identifier"] for item in model["command_interfaces"]}
+    for controller in configured_controllers:
+        commands = controller.get("command_interfaces") or []
+        joints = controller.get("joints") or []
+        expected = {
+            command if "/" in command else f"{joint}/{command}"
+            for joint in joints
+            for command in commands
+        }
+        for identifier in sorted(expected - available_interfaces):
+            joint, _, interface_name = identifier.partition("/")
+            chains.append(
+                {
+                    "id": f"{controller['package']}:{controller['name']}:{identifier}:unresolved:unresolved",
+                    "controller": controller["name"],
+                    "controller_type": controller.get("type"),
+                    "command_interface": identifier,
+                    "interface_name": interface_name or None,
+                    "hardware_component": None,
+                    "hardware_plugin": None,
+                    "resource": joint or None,
+                    "resource_type": "joint" if joint else None,
+                    "transmission": None,
+                    "actuators": [],
+                    "package": controller["package"],
+                    "deployment_scope": controller["deployment_scope"],
+                    "fact_type": "inferred",
+                    "confidence": round(min(float(controller.get("confidence", 0.0)), 0.62), 2),
+                    "resolved": False,
+                    "evidence": controller["evidence"],
+                }
+            )
+    scope_rank = {"production": 0, "example": 1, "test": 2}
+    unique = {item["id"]: item for item in chains}
+    return sorted(unique.values(), key=lambda item: (scope_rank.get(item["deployment_scope"], 3), not item.get("resolved", False), item.get("package") or "", item.get("controller") or "", item.get("command_interface") or ""))
+
+
 def build_ros2_control_model(package_reports: list[dict[str, Any]], urdf_control: dict[str, list[dict[str, Any]]]) -> dict[str, list[dict[str, Any]]]:
     model = {key: list(values) for key, values in urdf_control.items()}
     model.update({"controllers": [], "plugins": []})
@@ -2844,6 +3124,7 @@ def build_ros2_control_model(package_reports: list[dict[str, Any]], urdf_control
             unique_findings(model.get(key, [])),
             key=lambda item: (DEPLOYMENT_SCOPES.index(item.get("deployment_scope")) if item.get("deployment_scope") in DEPLOYMENT_SCOPES else 3, item.get("package") or "", item.get("file") or "", item.get("line") or 0, item.get("name") or ""),
         )
+    model["control_chains"] = build_control_chains(model)
     return model
 
 
@@ -3362,6 +3643,7 @@ def _scan_repository(root: Path) -> dict[str, Any]:
     urdf_sensors = []
     urdf_control = {"hardware_components": [], "transmissions": [], "command_interfaces": [], "state_interfaces": []}
     urdf_frames = set()
+    xacro_macros = discover_xacro_macros(scan_files, root)
     for file_index, path in enumerate(scan_files, start=1):
         session.emit("scan_files", file_index - 1, len(scan_files), path, "Scanning source file")
         read_text(path)
@@ -3448,7 +3730,7 @@ def _scan_repository(root: Path) -> dict[str, Any]:
         elif path.suffix == ".xml" and path.name != "package.xml":
             report["plugins"].extend(scan_plugins(path, root))
         if path.suffix in {".urdf", ".xacro"}:
-            transforms, sensors, frames, control_model = scan_urdf(path, root)
+            transforms, sensors, frames, control_model = scan_urdf(path, root, xacro_macros)
             for sensor in sensors:
                 sensor["package"] = package["name"]
                 sensor["deployment_scope"] = deployment_scope(sensor.get("file"), package["name"])
@@ -3505,7 +3787,9 @@ def _scan_repository(root: Path) -> dict[str, Any]:
             "Orphan endpoint and dependency diagnostics may be satisfied by another repository or installed package.",
             "Static source extraction cannot prove whether endpoints in mutually exclusive branches execute together; same-node type conflicts remain advisory unless distinct unconditional launch instances prove co-deployment.",
             "YAML launch parsing covers standard declarative ROS 2 forms but preserves unsupported dynamic expressions as unresolved.",
+            "Best-effort Xacro expansion resolves declarative repository macros, arguments, and properties; conditionals, arbitrary expressions, and executable extensions remain unresolved and are never executed.",
             "Runtime TF and QoS behavior should be confirmed on a running system.",
+            "Static control chains do not prove controller loading, hardware activation, successful builds, or runtime communication.",
         ],
     }
     initial_diagnostics.extend(session.input_diagnostics)

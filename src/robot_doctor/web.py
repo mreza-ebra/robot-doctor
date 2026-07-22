@@ -340,12 +340,12 @@ def diagnostic_card(item: dict[str, Any]) -> str:
     return f'<article class="finding finding-{html.escape(severity)}"><header>{badge}{metadata}</header><h3>{title}</h3>{content}</article>'
 
 
-def node_table(data: dict[str, Any], limit: int = 30) -> str:
+def node_table(data: dict[str, Any]) -> str:
     scope_rank = {"production": 0, "example": 1, "test": 2}
     nodes = sorted(
         data.get("architecture", {}).get("nodes", []),
         key=lambda item: (not item.get("active", False), scope_rank.get(str(item.get("deployment_scope")), 3), str(item.get("package") or ""), str(item.get("name") or "")),
-    )[:limit]
+    )
     rows = "".join(
         "<tr>"
         f"<td>{html.escape(str(item.get('name') or item.get('executable') or '<unresolved>'))}</td>"
@@ -360,8 +360,8 @@ def node_table(data: dict[str, Any], limit: int = 30) -> str:
     return rows or '<tr><td colspan="6">No source or launched nodes detected.</td></tr>'
 
 
-def interface_table(data: dict[str, Any], graph_name: str, left: str, right: str, limit: int = 30) -> str:
-    interfaces = data.get("architecture", {}).get(graph_name, [])[:limit]
+def interface_table(data: dict[str, Any], graph_name: str, left: str, right: str) -> str:
+    interfaces = data.get("architecture", {}).get(graph_name, [])
     rows = "".join(
         "<tr>"
         f"<td>{html.escape(str(item.get('name') or '<unresolved>'))}</td>"
@@ -374,7 +374,7 @@ def interface_table(data: dict[str, Any], graph_name: str, left: str, right: str
     return rows or '<tr><td colspan="5">None detected.</td></tr>'
 
 
-def role_table(data: dict[str, Any], limit: int = 40) -> str:
+def role_table(data: dict[str, Any]) -> str:
     architecture = data.get("architecture") or {}
     rows = []
     scope_rank = {"production": 0, "example": 1, "test": 2}
@@ -392,14 +392,10 @@ def role_table(data: dict[str, Any], limit: int = 40) -> str:
                 f"<td>{html.escape(str(item.get('file') or ''))}</td>"
                 "</tr>"
             )
-            if len(rows) >= limit:
-                break
-        if len(rows) >= limit:
-            break
     return "".join(rows) or '<tr><td colspan="7">No sensor, algorithm, or actuation role was inferred from source evidence.</td></tr>'
 
 
-def ros2_control_table(data: dict[str, Any], limit: int = 80) -> str:
+def ros2_control_table(data: dict[str, Any]) -> str:
     control = data.get("architecture", {}).get("ros2_control", {})
     rows = []
     scope_rank = {"production": 0, "example": 1, "test": 2}
@@ -440,14 +436,30 @@ def ros2_control_table(data: dict[str, Any], limit: int = 80) -> str:
                 f"<td>{html.escape(str(item.get('file') or ''))}</td>"
                 "</tr>"
             )
-            if len(rows) >= limit:
-                return "".join(rows)
     return "".join(rows) or '<tr><td colspan="9">No ros2_control declarations were detected.</td></tr>'
 
 
-def modification_table(data: dict[str, Any], limit: int = 30) -> str:
+def control_chain_table(data: dict[str, Any]) -> str:
+    chains = data.get("architecture", {}).get("ros2_control", {}).get("control_chains", [])
+    rows = "".join(
+        "<tr>"
+        f"<td>{html.escape(str(item.get('deployment_scope') or 'production'))}</td>"
+        f"<td>{html.escape(str(item.get('controller') or '<unclaimed>'))}</td>"
+        f"<td>{html.escape(str(item.get('command_interface') or '<unresolved>'))}</td>"
+        f"<td>{html.escape(str(item.get('hardware_component') or '<unresolved>'))}</td>"
+        f"<td>{html.escape(str(item.get('resource') or '<unresolved>'))}</td>"
+        f"<td>{html.escape(str(item.get('transmission') or 'direct / not detected'))}</td>"
+        f"<td>{html.escape(', '.join(str(value) for value in item.get('actuators', [])) or 'not detected')}</td>"
+        f"<td>{'yes' if item.get('resolved') else 'no'}</td>"
+        "</tr>"
+        for item in chains
+    )
+    return rows or '<tr><td colspan="8">No command-interface control chains were inferred.</td></tr>'
+
+
+def modification_table(data: dict[str, Any]) -> str:
     scope_rank = {"production": 0, "example": 1, "test": 2}
-    items = sorted(data.get("architecture", {}).get("modification_points", []), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("path") or ""))[:limit]
+    items = sorted(data.get("architecture", {}).get("modification_points", []), key=lambda item: (scope_rank.get(item.get("deployment_scope"), 3), item.get("package") or "", item.get("path") or ""))
     rows = "".join(
         "<tr>"
         f"<td>{html.escape(str(item.get('task') or ''))}</td>"
@@ -564,6 +576,7 @@ def result_body(
 <details><summary>Actions</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'actions', 'servers', 'clients')}</tbody></table></details>
 <details open><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
 <details open><summary>ros2_control model</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Source</th><th>Package</th><th>Details</th><th>File</th></tr></thead><tbody>{ros2_control_table(data)}</tbody></table></details>
+<details open><summary>ros2_control command chains</summary><p class="muted">Controller → command interface → hardware component → joint/resource → transmission → actuator. Unclaimed or unresolved stages remain visible.</p><table><thead><tr><th>Scope</th><th>Controller</th><th>Command interface</th><th>Hardware</th><th>Joint/resource</th><th>Transmission</th><th>Actuator</th><th>Resolved</th></tr></thead><tbody>{control_chain_table(data)}</tbody></table></details>
 <details open><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Scope</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
 <section><h2>Prioritized Findings</h2>{findings_filter_form(data, link_prefix, severity_filter, package_filter)}<p class="muted">Showing {len(shown)} of {len(diagnostics)} findings matching the current filters. Informational findings are collapsed by default.</p>{findings}</section>
 <section><h2>Reproducibility</h2><table>{provenance_table(data)}</table></section>

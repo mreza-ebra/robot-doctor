@@ -19,7 +19,7 @@
     "summary"
   ],
   "properties": {
-    "schema_version": {"const": "1.6.0"},
+    "schema_version": {"const": "1.7.0"},
     "scanner": {"$ref": "#/$defs/scanner"},
     "repository": {"$ref": "#/$defs/repository"},
     "provenance": {"$ref": "#/$defs/provenance"},
@@ -542,7 +542,7 @@
         "name": {"type": "string"},
         "type": {"$ref": "#/$defs/nullableString"},
         "role": {"type": "string"},
-        "source": {"enum": ["urdf", "pluginlib", "parameter"]},
+        "source": {"enum": ["urdf", "xacro", "pluginlib", "parameter"]},
         "plugin": {"$ref": "#/$defs/nullableString"},
         "base_class_type": {"$ref": "#/$defs/nullableString"},
         "resources": {"type": "array", "items": {"$ref": "#/$defs/controlResource"}},
@@ -563,7 +563,7 @@
     "controlInterface": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["identifier", "name", "resource", "resource_type", "component", "component_type", "parameters", "package", "deployment_scope", "file", "line", "fact_type", "confidence", "resolved", "evidence"],
+      "required": ["identifier", "name", "resource", "resource_type", "component", "component_type", "source", "parameters", "package", "deployment_scope", "file", "line", "fact_type", "confidence", "resolved", "evidence"],
       "properties": {
         "identifier": {"type": "string"},
         "name": {"type": "string"},
@@ -571,6 +571,7 @@
         "resource_type": {"enum": ["joint", "sensor", "gpio", "actuator"]},
         "component": {"type": "string"},
         "component_type": {"type": "string"},
+        "source": {"enum": ["urdf", "xacro"]},
         "parameters": {"type": "object", "additionalProperties": {"type": "string"}},
         "package": {"type": "string"},
         "deployment_scope": {"enum": ["production", "test", "example"]},
@@ -582,17 +583,42 @@
         "evidence": {"$ref": "#/$defs/evidenceList"}
       }
     },
+    "controlChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "controller", "controller_type", "command_interface", "interface_name", "hardware_component", "hardware_plugin", "resource", "resource_type", "transmission", "actuators", "package", "deployment_scope", "fact_type", "confidence", "resolved", "evidence"],
+      "properties": {
+        "id": {"type": "string"},
+        "controller": {"$ref": "#/$defs/nullableString"},
+        "controller_type": {"$ref": "#/$defs/nullableString"},
+        "command_interface": {"$ref": "#/$defs/nullableString"},
+        "interface_name": {"$ref": "#/$defs/nullableString"},
+        "hardware_component": {"$ref": "#/$defs/nullableString"},
+        "hardware_plugin": {"$ref": "#/$defs/nullableString"},
+        "resource": {"$ref": "#/$defs/nullableString"},
+        "resource_type": {"enum": ["joint", "sensor", "gpio", "actuator", null]},
+        "transmission": {"$ref": "#/$defs/nullableString"},
+        "actuators": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "package": {"type": "string"},
+        "deployment_scope": {"enum": ["production", "test", "example"]},
+        "fact_type": {"const": "inferred"},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "resolved": {"type": "boolean"},
+        "evidence": {"$ref": "#/$defs/evidenceList"}
+      }
+    },
     "ros2Control": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["hardware_components", "controllers", "transmissions", "command_interfaces", "state_interfaces", "plugins"],
+      "required": ["hardware_components", "controllers", "transmissions", "command_interfaces", "state_interfaces", "plugins", "control_chains"],
       "properties": {
         "hardware_components": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
         "controllers": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
         "transmissions": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
         "command_interfaces": {"type": "array", "items": {"$ref": "#/$defs/controlInterface"}},
         "state_interfaces": {"type": "array", "items": {"$ref": "#/$defs/controlInterface"}},
-        "plugins": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}}
+        "plugins": {"type": "array", "items": {"$ref": "#/$defs/controlEntity"}},
+        "control_chains": {"type": "array", "items": {"$ref": "#/$defs/controlChain"}}
       }
     },
     "modificationPoint": {

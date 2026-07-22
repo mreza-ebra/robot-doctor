@@ -84,7 +84,8 @@
           "transmissions": 3,
           "command_interfaces": 2,
           "state_interfaces": 8,
-          "plugins": 22
+          "plugins": 22,
+          "control_chains": 2
         },
         "max_errors": 0
       }

@@ -89,11 +89,18 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertEqual(command["parameters"], {"min": "-2.0", "max": "2.0"})
         self.assertIn("ProbeImu", {item["name"] for item in control["hardware_components"]})
         self.assertIn("control_imu/orientation.x", {item["identifier"] for item in control["state_interfaces"]})
+        generated = next(item for item in control["hardware_components"] if item["name"] == "GeneratedLiftSystem")
+        self.assertEqual(generated["source"], "xacro")
+        self.assertEqual(generated["command_interfaces"], ["lift_joint/position"])
+        self.assertTrue(generated["resolved"])
+        self.assertTrue(any(record["extractor"] == "xacro_macro_invocation" for record in generated["evidence"]))
+        self.assertFalse(any("${" in item["name"] for item in control["hardware_components"]))
         configured_controller = next(item for item in control["controllers"] if item["name"] == "drive_controller")
         self.assertEqual(configured_controller["joints"], ["drive_joint"])
         self.assertEqual(configured_controller["command_interfaces"], ["velocity"])
         self.assertEqual(configured_controller["state_interfaces"], ["position", "velocity"])
         self.assertIn("drive_transmission", {item["name"] for item in control["transmissions"]})
+        self.assertIn("lift_joint_transmission", {item["name"] for item in control["transmissions"]})
         self.assertIn("probe_cpp/ProbeTransmission", {item["name"] for item in control["transmissions"]})
 
         plugins = {item["name"]: item for item in control["plugins"]}
@@ -114,6 +121,15 @@ class RobotDoctorScannerTests(unittest.TestCase):
         self.assertIn("Configure or implement ros2_control controllers", modification_tasks)
         self.assertIn("Change ros2_control transmission mappings or loaders", modification_tasks)
         self.assertEqual(data["summary"]["services"], len(data["architecture"]["services"]))
+        chain = next(item for item in control["control_chains"] if item["controller"] == "drive_controller")
+        self.assertEqual(
+            (chain["command_interface"], chain["hardware_component"], chain["resource"], chain["transmission"], chain["actuators"]),
+            ("drive_joint/velocity", "ProbeSystem", "drive_joint", "drive_transmission", ["drive_motor"]),
+        )
+        self.assertTrue(chain["resolved"])
+        generated_chain = next(item for item in control["control_chains"] if item["command_interface"] == "lift_joint/position")
+        self.assertIsNone(generated_chain["controller"])
+        self.assertFalse(generated_chain["resolved"])
 
     def test_launch_graph_covers_python_xml_yaml_and_composition(self):
         data = ros_repo_discover.scan_repository(FIXTURES / "launch_robot")
@@ -615,6 +631,7 @@ void imu_case()
         self.assertEqual(definitions["architecture"]["properties"]["ros2_control"]["$ref"], "#/$defs/ros2Control")
         self.assertEqual(definitions["ros2Control"]["properties"]["hardware_components"]["items"]["$ref"], "#/$defs/controlEntity")
         self.assertEqual(definitions["ros2Control"]["properties"]["command_interfaces"]["items"]["$ref"], "#/$defs/controlInterface")
+        self.assertEqual(definitions["ros2Control"]["properties"]["control_chains"]["items"]["$ref"], "#/$defs/controlChain")
         self.assertTrue({"kind", "name", "type", "file", "line", "confidence", "resolved", "evidence"} <= set(definitions["finding"]["required"]))
         self.assertTrue({"file", "format", "package", "actions", "includes", "arguments", "confidence", "evidence"} <= set(definitions["launchFile"]["required"]))
         self.assertTrue({"id", "name", "namespace", "package", "origin", "active", "publishers", "subscriptions", "service_servers", "service_clients", "action_servers", "action_clients", "parameters", "confidence", "evidence"} <= set(definitions["node"]["required"]))

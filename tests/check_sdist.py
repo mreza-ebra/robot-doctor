@@ -17,6 +17,8 @@ def main() -> int:
         "stop_robot_doctor.command",
         "schemas/robot_doctor_scan.schema.json",
         "src/robot_doctor/web.py",
+        "tests/fixtures/cpp_robot/probe_cpp/urdf/control_macro.xacro",
+        "tests/fixtures/cpp_robot/probe_cpp/urdf/generated_robot.xacro",
         "tests/run_live_git_intake.py",
     }
     with tarfile.open(args.sdist, "r:gz") as archive:
@@ -24,7 +26,7 @@ def main() -> int:
     missing = sorted(required - names)
     if missing:
         raise SystemExit(f"source distribution is missing: {', '.join(missing)}")
-    print(f"PASS {args.sdist.name}: Docker launchers, schema, and application source present")
+    print(f"PASS {args.sdist.name}: Docker launchers, schema, application source, and Xacro fixtures present")
     return 0
 
 
