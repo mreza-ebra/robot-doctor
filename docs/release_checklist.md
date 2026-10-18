@@ -10,7 +10,7 @@
 - [x] Add the offline public-case view, primary home-screen entry, showcase bundle evidence, and dedicated CI replay job.
 - [x] All 54 unit tests pass; the 121-label benchmark, six pinned repository/workspace regressions, and existing 95-package diagnostic-noise totals remain unchanged.
 - [x] Verify final wheel/sdist contents, installed-wheel offline case assets, browser source-evidence expansion and correction view, and live HTTP case downloads.
-- [ ] Push and verify CI for this follow-up.
+- [x] Push implementation `9269535` and verify [GitHub Actions run 39155060660](https://github.com/mreza-ebra/robot-doctor/actions/runs/39155060660): all seven jobs pass, including pinned FANUC replay, Python 3.10.15/3.13 units, repository regressions/benchmark, packaging, live Git intake, and container/HTTP checks.
 
 This is an issue-guided reproduction, not blind discovery. No upstream comment/PR, ROS build/runtime, simulation, or physical robot operation has been performed. Detailed evidence and limitations are in `docs/case_studies/fanuc/README.md`.
 
