@@ -16,7 +16,7 @@ Updated 18 October 2026. Checked items are implemented or internally verified; t
 - [x] Finish and verify the short screen walkthrough and transcript.
 - [x] Prepare personalized invitation template, interview script, observation form, and initial decision criteria.
 - [x] Complete browser, regression, accuracy, distribution, and installed-wheel checks; record results in docs/release_checklist.md.
-- [ ] Push the milestone and verify remote GitHub Actions.
+- [x] Push the milestone and verify remote GitHub Actions: implementation `bbdee7f`, [successful run 39152309587](https://github.com/mreza-ebra/robot-doctor/actions/runs/39152309587).
 
 ## Before external pilots
 

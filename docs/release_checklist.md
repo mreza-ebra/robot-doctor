@@ -15,7 +15,7 @@ This is development work on the existing beta, not a new published release or a 
 - [x] GUI example comparison, source-link expansion, file-chooser ZIP scan, keyboard skip-link navigation, and 390 × 844 layout checked in the in-app browser.
 - [x] Static export relative links checked; video duration, decoding, and representative rendered frames verified.
 - [x] Final wheel/source-distribution contents and installed-wheel smoke checks.
-- [ ] Push changes and verify remote CI for this milestone.
+- [x] Push implementation `bbdee7f` and verify [GitHub Actions run 39152309587](https://github.com/mreza-ebra/robot-doctor/actions/runs/39152309587): Python 3.10.15/3.13 units, pinned repositories, accuracy benchmark, packaging, live Git intake, and non-root container/HTTP workflow all pass.
 
 Direct `file:` navigation is blocked by the automation browser, so saved-report disk opening was not visually tested there. The local app uses the same renderer. Screen-reader, Safari-launcher, physical robot, and external user evaluations remain open in BACKLOG.md. Public showcase hosting and participant evaluation permission remain founder decisions before outreach.
 
