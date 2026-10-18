@@ -8,7 +8,7 @@
 - [x] Bundle provenance, original/before/after scans, HTML reports, patch, attribution, and upstream license texts.
 - [x] Add a two-case chooser and case-specific routes/downloads to the app and offline showcase; retain original FANUC URLs and add both pinned CI replays.
 - [x] All 57 unit tests pass; both pinned local replays, wheel/sdist contents, installed-wheel offline assets/renderers, live HTTP routes/downloads, and browser chooser/source-evidence/correction checks pass. Regenerate the showcase with both cases, return navigation, and screenshots; validate relative asset/fragment links across the exported HTML.
-- [ ] Push and verify CI for this follow-up.
+- [x] Push implementation `aad5b05` and verify [GitHub Actions run 39159744764](https://github.com/mreza-ebra/robot-doctor/actions/runs/39159744764): all eight jobs pass, including independent FANUC/MoveIt source replays, Python 3.10.15/3.13 units, repository regressions/benchmark, packaging, live Git intake, and container/HTTP checks.
 
 No upstream submission, ROS build/launch, simulation, physical robot operation, or RViz visual comparison was performed. The local presets can differ from the tutorial presets previously referenced. Detailed evidence is in `docs/case_studies/moveit/README.md`.
 
