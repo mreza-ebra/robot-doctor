@@ -54,6 +54,24 @@ jobs:
           robot-doctor-scan turtlebot4 --json --output /tmp/turtlebot4.json
           robot-doctor-overview turtlebot4 --output-dir /tmp/turtlebot4-overviews
 
+  public-case:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install Robot Doctor
+        run: python -m pip install -e .
+      - name: Fetch pinned public issue source
+        run: |
+          git init --quiet /tmp/fanuc-public-case
+          git -C /tmp/fanuc-public-case remote add origin https://github.com/FANUC-CORPORATION/fanuc_driver.git
+          git -C /tmp/fanuc-public-case fetch --quiet --depth 1 origin da5db3f611cdc9dffe687e056c4e79bea584bf5c
+          git -C /tmp/fanuc-public-case checkout --quiet --detach FETCH_HEAD
+      - name: Reproduce reported dependency and local correction
+        run: python tools/run_public_case_study.py /tmp/fanuc-public-case --output-dir /tmp/fanuc-case-evidence --initial-report docs/case_studies/fanuc/initial.json
+
   package:
     runs-on: ubuntu-latest
     steps:

@@ -33,6 +33,15 @@ def main() -> int:
     home = request("/")[0].decode()
     token = re.search(r'name="csrf_token" value="([^"]+)"', home).group(1)
     assert "Explore an example" in home
+    case_body = request("/case-study")[0].decode()
+    assert "RD101" in case_body and "fanuc_hardware_interface" in case_body
+    case = json.loads(request("/case-study/case.json")[0])
+    assert case["target_before"] == 1 and case["target_after"] == 0
+    assert request("/case-study/before.html")[0]
+    assert request("/case-study/after.html")[0]
+    assert b"+  <exec_depend>fanuc_hardware_interface</exec_depend>" in request("/case-study/fix.patch")[0]
+    assert request("/case-study/licenses/Apache-2.0.txt")[0]
+    status("/case-study/../SECURITY.md", 404)
     for stage in ("broken", "fixed"):
         body = request(f"/example?stage={stage}")[0].decode()
         result_path = re.search(r'href="(/tasks/[^/]+/result.json)"', body).group(1)
@@ -79,7 +88,7 @@ def main() -> int:
     status("/", 403, headers={"Host": "untrusted.example"})
     status("/example?stage=unknown", 404)
     status("/example/private.zip", 404)
-    print("PASS first-use HTTP: offline examples, downloads, ZIP scan, filters, project title, ambiguous input, CSRF, Host, and invalid-stage checks")
+    print("PASS first-use HTTP: public issue case, offline examples, downloads, ZIP scan, filters, project title, ambiguous input, CSRF, Host, and invalid-stage checks")
     return 0
 
 

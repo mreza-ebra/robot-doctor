@@ -1,0 +1,158 @@
+{
+  "after_summary": {
+    "actions": 0,
+    "architecture_nodes_total": 36,
+    "diagnostics": {
+      "info": 80,
+      "warning": 10
+    },
+    "launch_files": 8,
+    "node_scopes": {
+      "example": 12,
+      "production": 19,
+      "test": 1
+    },
+    "nodes": 32,
+    "packages": 11,
+    "resolved_entities": 95,
+    "services": 52,
+    "skipped_files": 0,
+    "topics": 24,
+    "unresolved_entities": 4
+  },
+  "before_summary": {
+    "actions": 0,
+    "architecture_nodes_total": 36,
+    "diagnostics": {
+      "info": 80,
+      "warning": 11
+    },
+    "launch_files": 8,
+    "node_scopes": {
+      "example": 12,
+      "production": 19,
+      "test": 1
+    },
+    "nodes": 32,
+    "packages": 11,
+    "resolved_entities": 95,
+    "services": 52,
+    "skipped_files": 0,
+    "topics": 24,
+    "unresolved_entities": 4
+  },
+  "branch_at_capture": "main",
+  "captured_at": "2026-10-18T18:33:36.545999+00:00",
+  "checks": {
+    "build_run": false,
+    "manifest_xml_valid": true,
+    "no_new_local_dependency_cycle": true,
+    "only_target_diagnostic_removed": true,
+    "physical_robot_run": false,
+    "ros_runtime_run": false,
+    "upstream_submission": false
+  },
+  "corrected_manifest_sha256": "2233bec6613f518f36f67b08ef3b28fe639ad23c5dcb7ef6a5cfb67fd63d4ed0",
+  "dependency": "fanuc_hardware_interface",
+  "initial_detector_commit": "4bb7afba020c8315245ea7532f51762f878942fe",
+  "initial_detector_target_count": 0,
+  "issue_state_at_check": "OPEN",
+  "issue_state_checked_on": "2026-10-18",
+  "issue_url": "https://github.com/FANUC-CORPORATION/fanuc_driver/issues/50",
+  "kind": "issue-guided reproduction",
+  "local_package_selection_after": [
+    "fanuc_hardware_interface",
+    "fanuc_libs",
+    "fanuc_moveit_config"
+  ],
+  "local_package_selection_before": [
+    "fanuc_moveit_config"
+  ],
+  "manifest": "fanuc_moveit_config/package.xml",
+  "original_manifest_sha256": "de68220569f0a7fe88e4ae5fa418671f0ad78a1f941801973bb5d4e9508cd082",
+  "package": "fanuc_moveit_config",
+  "patch_sha256": "1fe1619757250c23ea22913e5b218889baddde66343089b75c0ce1231f036057",
+  "repository_url": "https://github.com/FANUC-CORPORATION/fanuc_driver",
+  "revision": "da5db3f611cdc9dffe687e056c4e79bea584bf5c",
+  "source_finding": {
+    "code": "RD101",
+    "confidence": 0.82,
+    "dependency": "fanuc_hardware_interface",
+    "deployment_scope": "production",
+    "direct_reference": true,
+    "evidence": [
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit.launch.py",
+        "line": 97,
+        "snippet": "get_package_share_directory(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit.launch.py",
+        "line": 41,
+        "snippet": "FindPackageShare(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit.launch.py",
+        "line": 68,
+        "snippet": "FindPackageShare(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit.launch.py",
+        "line": 172,
+        "snippet": "FindPackageShare(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit_template.launch.py",
+        "line": 101,
+        "snippet": "get_package_share_directory(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit_template.launch.py",
+        "line": 43,
+        "snippet": "FindPackageShare(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit_template.launch.py",
+        "line": 70,
+        "snippet": "FindPackageShare(\"fanuc_hardware_interface\")"
+      },
+      {
+        "extractor": "python_launch_package_share",
+        "file": "fanuc_moveit_config/launch/fanuc_moveit_template.launch.py",
+        "line": 177,
+        "snippet": "FindPackageShare(\"fanuc_hardware_interface\")"
+      }
+    ],
+    "fact_type": "diagnostic",
+    "message": "fanuc_moveit_config references 'fanuc_hardware_interface' but package.xml does not declare it.",
+    "package": "fanuc_moveit_config",
+    "remediation": {
+      "commands": [
+        "rosdep check --from-paths src --ignore-src"
+      ],
+      "patch_hint": "<exec_depend>fanuc_hardware_interface</exec_depend>",
+      "steps": [
+        "Confirm the reference is required at build or runtime.",
+        "Add the dependency to package.xml and run rosdep."
+      ],
+      "suggested_files": [
+        "fanuc_moveit_config/package.xml",
+        "fanuc_moveit_config/launch/fanuc_moveit.launch.py",
+        "fanuc_moveit_config/launch/fanuc_moveit_template.launch.py"
+      ],
+      "summary": "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external."
+    },
+    "severity": "warning",
+    "title": "Likely missing package dependency"
+  },
+  "target_after": 0,
+  "target_before": 1,
+  "target_code": "RD101"
+}

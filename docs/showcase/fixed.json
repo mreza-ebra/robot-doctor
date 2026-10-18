@@ -911,6 +911,12 @@
             "file": "scan_demo/launch/scan.launch.py",
             "line": 11,
             "snippet": "Node(package=\"scan_demo\", executable=\"scan_observer\", name=\"scan_observer\")"
+          },
+          {
+            "extractor": "python_launch_package_share",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 10,
+            "snippet": "FindPackageShare(\"scan_demo\")"
           }
         ],
         "sensor_msgs": [
@@ -969,8 +975,8 @@
     }
   ],
   "provenance": {
-    "completed_at": "2026-10-18T18:00:50.419157Z",
-    "duration_seconds": 0.005646,
+    "completed_at": "2026-10-18T18:37:46.822055Z",
+    "duration_seconds": 0.005489,
     "environment": {
       "architecture": "arm64",
       "platform": "Darwin",
@@ -988,7 +994,7 @@
       "source_type": "local"
     },
     "ros_distribution": null,
-    "started_at": "2026-10-18T18:00:50.413515Z"
+    "started_at": "2026-10-18T18:37:46.816567Z"
   },
   "repository": {
     "name": "ROS 2 scan example",

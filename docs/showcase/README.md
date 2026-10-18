@@ -2,6 +2,8 @@
 
 Generated and reviewed on 18 October 2026 using the current analyzer. The source example is synthetic and contains a deliberately introduced missing-parameter-file reference. No customer results, time savings, build success, or runtime behavior are claimed.
 
+The showcase now leads with a separate [real public FANUC issue case](public_case/index.html), including a pinned upstream snapshot, a local correction, and full before/after evidence. The video below remains a walkthrough of the controlled synthetic example; it is not footage of the FANUC case. See the [detailed real-case report](public_case/README.md).
+
 ## Open and explore
 
 Download and extract [the complete bundle](../FaciRob_Showcase.zip), then open `showcase/index.html` in your normal browser. Alternatively, open `docs/showcase/index.html` from the repository checkout. All report links are relative and there are no external scripts, fonts, or services. No installation is required to inspect the saved showcase. GitHub's HTML file view displays source rather than running the page.

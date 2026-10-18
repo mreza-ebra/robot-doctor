@@ -6,6 +6,10 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 
 ### Added
 
+- Public, issue-guided FANUC driver #50 case study with a pinned SHA, original-detector miss, improved before/after scans, reviewed local manifest patch, preserved upstream licenses, offline app view, and a CI replay against the real source.
+- Generic import-aware detection of literal Python ROS package-share lookups, including aliases; conservative handling of dynamic, shadowed, and reassigned names.
+- Dependency remediation now points to the affected package manifest and suggests `exec_depend` when the collected references are launch-only.
+
 - First-run value explanation, an offline "Explore an example" flow, and local-evaluation instructions before repository access is requested.
 - A bundled synthetic ROS 2 scan publisher/observer project with one intentional RD302 fault, independently scanned corrected source, and downloadable ZIPs.
 - Standalone HTML/JSON/source showcase export, a captioned 70-second walkthrough, transcript, reproducible media/export scripts, and an offline sharing bundle.

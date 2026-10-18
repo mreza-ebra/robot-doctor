@@ -10,8 +10,9 @@ Ask for a 20-minute session on a public repository or a project the participant 
 
 ## Materials to send once outreach is authorized
 
-- `docs/showcase/index.html`: entry point for the saved, explorable report. Share the whole showcase folder or its ZIP so relative links work.
-- `docs/showcase/walkthrough.mp4`: short screen walkthrough, with an accompanying transcript in `docs/showcase/README.md`.
+- `docs/showcase/index.html`: entry point, now leading with the real public FANUC issue case. Share the whole showcase folder or its ZIP so relative links work.
+- `docs/case_studies/fanuc/README.md`: provenance, original-detector miss, generic improvement, local correction, and static verification limits for upstream issue #50. Do not imply FANUC endorsement, upstream acceptance, or a verified runtime repair.
+- `docs/showcase/walkthrough.mp4`: optional controlled-example screen walkthrough, with a transcript in `docs/showcase/README.md`; this video is not footage of the FANUC case.
 - `docs/showcase/broken.zip` and `fixed.zip`: reproducible synthetic projects. Only the launch filename reference differs.
 - README installation instructions and SECURITY.md local deployment boundary.
 
@@ -25,7 +26,7 @@ Hi [Name],
 
 I saw your work on [specific project or integration]. I'm developing FaciRob, a local tool that maps ROS 2 repositories and flags potential integration issues with source evidence, without building the project.
 
-I've attached a short walkthrough and an explorable example showing a deliberately broken launch reference and its corrected scan.
+I've included a case study of an existing public ROS 2 issue: a missing runtime dependency in the FANUC driver, with source evidence and a reviewed local correction. The case also explains what was verified statically and what still needs a ROS runtime check.
 
 I'm looking for three robotics engineers to evaluate it on a project they know. We can start with a public repository, or I can help you run it locally without giving me private source access. You would get an architecture report and a joint review of any relevant findings.
 
@@ -33,7 +34,7 @@ Would a 20-minute session be useful?
 
 Reza
 
-Replace both personalisation placeholders before sending. Attach the actual materials; if later hosted, replace the attachment sentence with the verified URL. No sending is authorized by this document.
+Replace both personalisation placeholders before sending. Include the actual materials; if later hosted, use the verified URL. No sending is authorized by this document.
 
 ## Twenty-minute session
 
@@ -41,7 +42,7 @@ Replace both personalisation placeholders before sending. Attach the actual mate
 | --- | --- | --- |
 | 0–2 min | Agree on scope and permission for notes | Which project can we inspect together? Please avoid sharing confidential information. |
 | 2–6 min | Understand a recent incident before showing the tool | Tell me about the last integration issue that took longer than expected. What did you inspect? Where did you get stuck? What tools helped? |
-| 6–8 min | Show the controlled example | This fault was intentionally introduced. What do you think the report establishes? What would still need checking? |
+| 6–8 min | Show the public issue case | This is a pinned snapshot of a reported issue and a local correction. What does the evidence establish? What would still need checking? The controlled example is available for a simpler tutorial. |
 | 8–15 min | Let the engineer use the tool | Please choose a project, run a scan, inspect something relevant, and decide what you would do next. Think aloud if comfortable. |
 | 15–18 min | Check relevance and trust | Which finding is useful, incorrect, or already known? What evidence is missing? How does this compare with your existing workflow? |
 | 18–20 min | Establish a concrete next step | Is there another project or incident worth trying? Who owns a decision about tools like this? |

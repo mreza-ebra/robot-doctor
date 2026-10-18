@@ -32,4 +32,4 @@ where = ["src"]
 include = ["robot_doctor*"]
 
 [tool.setuptools.package-data]
-robot_doctor = ["schemas/*.json"]
+robot_doctor = ["schemas/*.json", "case_studies/fanuc/*.json", "case_studies/fanuc/*.html", "case_studies/fanuc/*.patch", "case_studies/fanuc/*.md", "case_studies/fanuc/licenses/*.txt"]

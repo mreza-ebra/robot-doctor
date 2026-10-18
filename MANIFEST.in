@@ -5,12 +5,13 @@ include SECURITY.md
 include BACKLOG.md
 include tools/build_showcase.py
 include tools/build_walkthrough.py
+include tools/run_public_case_study.py
 include .robot-doctor.example.json
 include .dockerignore
 include Dockerfile
 include compose.yaml
 include start_robot_doctor.command
 include stop_robot_doctor.command
-recursive-include docs *.md *.html *.json *.zip *.png *.mp4 *.srt
+recursive-include docs *.md *.html *.json *.zip *.png *.mp4 *.srt *.patch *.txt
 recursive-include schemas *.json
 recursive-include tests *.py *.json *.md *.xml *.yaml *.cpp *.hpp *.msg *.urdf *.xacro CMakeLists.txt setup.py setup.cfg pyproject.toml

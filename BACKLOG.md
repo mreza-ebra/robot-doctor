@@ -20,6 +20,9 @@ Updated 18 October 2026. Checked items are implemented or internally verified; t
 
 ## Before external pilots
 
+- [x] Reproduce a real open public ROS 2 issue: FANUC driver #50 at pinned SHA `da5db3f`; improve the generic detector, prepare a local correction, retain before/after evidence, and document static verification limits.
+- [ ] Submit the FANUC patch upstream only if explicitly requested; no issue comment or PR has been sent.
+
 - [ ] Founder review of the showcase and evaluation offer.
 - [ ] Confirm evaluation permission for selected participants under the current proprietary license; decide public distribution terms separately.
 - [ ] Personalize invitations for three relevant ROS 2 engineers; obtain authorization before sending.

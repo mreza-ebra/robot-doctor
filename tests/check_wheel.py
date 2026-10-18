@@ -22,6 +22,13 @@ def main() -> int:
         "robot_doctor/overviews.py",
         "robot_doctor/web.py",
         "robot_doctor/demo.py",
+        "robot_doctor/public_case.py",
+        "robot_doctor/case_studies/fanuc/case.json",
+        "robot_doctor/case_studies/fanuc/initial.json",
+        "robot_doctor/case_studies/fanuc/before.json",
+        "robot_doctor/case_studies/fanuc/after.json",
+        "robot_doctor/case_studies/fanuc/fix.patch",
+        "robot_doctor/case_studies/fanuc/licenses/Apache-2.0.txt",
         "robot_doctor/schemas/robot_doctor_config.schema.json",
         "robot_doctor/schemas/robot_doctor_scan.schema.json",
     }

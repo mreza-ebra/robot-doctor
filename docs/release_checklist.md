@@ -1,5 +1,19 @@
 # Release Checklist
 
+## 2026-10-18 Public Issue Case Study (0.6.0.dev0)
+
+- [x] Verify FANUC driver issue #50 is open and pin the observed current `main` source to `da5db3f611cdc9dffe687e056c4e79bea584bf5c`.
+- [x] Preserve the original detector's miss; add a generic, import-aware literal package-share extractor without vendor-specific scanner rules.
+- [x] Prepare a separate corrected source copy and a one-line runtime dependency patch; the pristine upstream checkout remains unchanged.
+- [x] Verify the patch applies, XML parses, the local dependency closure gains the missing packages, the target finding disappears, and unrelated diagnostics are identical.
+- [x] Preserve original and improved before/after JSON, full HTML reports, hashes, upstream notices/licenses, and replay instructions.
+- [x] Add the offline public-case view, primary home-screen entry, showcase bundle evidence, and dedicated CI replay job.
+- [x] All 54 unit tests pass; the 121-label benchmark, six pinned repository/workspace regressions, and existing 95-package diagnostic-noise totals remain unchanged.
+- [x] Verify final wheel/sdist contents, installed-wheel offline case assets, browser source-evidence expansion and correction view, and live HTTP case downloads.
+- [ ] Push and verify CI for this follow-up.
+
+This is an issue-guided reproduction, not blind discovery. No upstream comment/PR, ROS build/runtime, simulation, or physical robot operation has been performed. Detailed evidence and limitations are in `docs/case_studies/fanuc/README.md`.
+
 ## 2026-10-18 First-Run And Showcase Milestone (0.6.0.dev0)
 
 This is development work on the existing beta, not a new published release or a claim of customer validation.

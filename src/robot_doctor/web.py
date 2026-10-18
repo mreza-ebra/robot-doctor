@@ -26,6 +26,7 @@ from .config import ConfigError, ScanConfig
 from .demo import BROKEN_REFERENCE, FIXED_REFERENCE, LAUNCH_PATH, example_files, example_zip, write_example
 from .intake import DEFAULT_MAX_CHECKOUT_BYTES, IntakeError, clone_git_repository, extract_zip_upload, repository_content_sha256
 from .overviews import basic_document, expert_document, intermediate_document
+from .public_case import ASSET_NAMES, DEPENDENCY, ISSUE_URL, PACKAGE, REPOSITORY_URL, case_directory
 from .scanner import ScanCancelled, scan_repository
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -653,10 +654,10 @@ def home_page(csrf_token: str, error: str | None = None) -> str:
         f"""<p class="eyebrow">ROS 2 project analysis by FaciRob</p>
 <p class="lead">Map your ROS 2 project and inspect potential integration issues—with links to the source. No build or ROS installation required for analysis.</p>
 {error_html}
-<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See what you can learn before sharing a project</h2>
-<p>Explore a small ROS 2 project with an intentionally broken launch reference. Inspect the source evidence, then compare the corrected scan.</p>
-<div class="actions"><a class="button" href="/example">Explore an example</a><a class="button secondary" href="#scan">Scan your project</a></div>
-<p class="muted">The example runs offline once this app is open. No account, repository access, or robot connection needed.</p></section>
+<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See a real ROS 2 issue before sharing a project</h2>
+<p>A public FANUC driver issue reports a missing dependency. Follow the captured source evidence, review the local correction, and compare the scans.</p>
+<div class="actions"><a class="button" href="/case-study">View the public issue case study</a><a class="button secondary" href="/example">Explore an example</a><a href="#scan">Scan your project</a></div>
+<p class="muted">Both walkthroughs are available offline once this app is open. No account, repository access, or robot connection needed.</p></section>
 <ol class="steps" aria-label="How it works"><li><strong>Choose a project</strong><p>Use an HTTPS Git URL or a repository ZIP.</p></li><li><strong>Inspect the evidence</strong><p>Review important findings and trace them to source files.</p></li><li><strong>Plan your next check</strong><p>Review changes, rescan, then verify behavior separately.</p></li></ol>
 <section id="scan" aria-labelledby="scan-title"><h2 id="scan-title">Scan your ROS 2 repository</h2>
 <p>Start with a public project, or use a ZIP for code that should stay on this computer.</p>
@@ -686,6 +687,28 @@ def example_intro(stage: str, *, broken_href: str = "/example?stage=broken", fix
 <p><strong>Verification boundary:</strong> a rescan checks the source reference. It does not prove build success, message delivery, or hardware operation. Download the project for your own inspection and separate ROS testing.</p></section>'''
 
 
+def public_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
+    asset = lambda name: html.escape(asset_prefix + name, quote=True)
+    revision = html.escape(str(case["revision"]))
+    before = case["before_summary"]["diagnostics"]
+    after = case["after_summary"]["diagnostics"]
+    return f'''<p class="eyebrow">Public issue · Captured source evidence · Reviewed local correction</p>
+<p class="lead">FANUC's <code>{PACKAGE}</code> launch files use <code>{DEPENDENCY}</code>, but the package manifest does not declare that runtime dependency.</p>
+<p><a href="{ISSUE_URL}">Read upstream issue #50</a> · <a href="{REPOSITORY_URL}/tree/{revision}">Inspect the pinned source</a></p>
+<p>Issue status was open when checked on 18 October 2026. This saved comparison uses commit <code>{revision}</code>; it does not track later upstream changes.</p>
+<ol class="steps"><li><strong>Reported by a real user</strong><p>A selective build was followed by a launch failure because the hardware-interface package was unavailable.</p></li><li><strong>Detected in unchanged source</strong><p>The improved analyzer reports RD101 with the package-share lookup locations.</p></li><li><strong>One manifest correction</strong><p>Declare the runtime dependency, then rescan the separate corrected copy.</p></li></ol>
+<section id="target"><h2>Before the correction: the source-backed finding</h2>{diagnostic_card(case["source_finding"])}</section>
+<section class="panel" id="correction"><h2>The reviewed local correction</h2><p><code>fanuc_moveit_config/package.xml</code></p><pre><code>+ &lt;exec_depend&gt;fanuc_hardware_interface&lt;/exec_depend&gt;</code></pre>
+<p>The launch code is unchanged. The original checkout is preserved; the correction is applied to a separate local copy.</p><div class="actions"><a class="button" href="{asset('fix.patch')}">Inspect the patch</a><a href="{asset('before.html')}">Full scan before</a><a href="{asset('after.html')}">Full scan after</a></div></section>
+<section class="panel assessment" id="verification"><h2>After the correction: this finding is absent</h2><p><strong>Target finding: 1 → 0.</strong> Full-repository warnings: {before.get('warning', 0)} → {after.get('warning', 0)}. Other diagnostics remain; this does not declare the entire repository healthy.</p>
+<p>The package manifest parses successfully, the added edge creates no cycle among the local package dependencies, and unrelated diagnostics are unchanged.</p>
+<p>The manifest-derived local dependency closure now includes <code>fanuc_hardware_interface</code> and <code>fanuc_libs</code>, which were absent before. This checks package metadata without running <code>colcon</code>.</p>
+<p><strong>Verification boundary:</strong> no ROS build, launch, simulation, or physical robot test was run. This corrects and verifies the missing manifest declaration; it does not demonstrate that every symptom of the upstream issue is resolved.</p></section>
+<details><summary>How the analyzer improved during this investigation</summary><p>The first scan with Robot Doctor commit <code>4bb7afb</code> missed this dependency. A generic, import-aware extractor was added for literal package-share lookups, including aliases. Dynamic package names are not guessed. No FANUC package names were added to scanner rules.</p><p>This was an issue-guided reproduction, not a blind discovery. The upstream discussion already describes the missing dependency and mentions another analysis tool. No upstream issue comment or pull request has been submitted.</p></details>
+<section id="evidence-downloads"><h2>Evidence and reproduction</h2><p class="downloads"><a href="{asset('case.json')}">Case provenance</a><a href="{asset('initial.json')}">Original detector scan</a><a href="{asset('before.json')}">Improved detector: before</a><a href="{asset('after.json')}">Improved detector: after</a></p>
+<p>Use <code>tools/run_public_case_study.py</code> with a pristine checkout at the pinned SHA to repeat the correction and comparison. Only evidence and a minimal patch are bundled here. <a href="{asset('THIRD_PARTY_NOTICES.md')}">Upstream attribution</a> and <a href="{asset('licenses/Apache-2.0.txt')}">license text</a> accompany the captured source snippets.</p></section>'''
+
+
 def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", package_filter: str = "") -> str:
     title = "ROS 2 scan example" if task.example_stage else project_name({"repository": {"source": task.source}})
     progress = task.progress
@@ -704,7 +727,7 @@ def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", 
             data = json.loads((task.directory / "result.json").read_text(encoding="utf-8"))
             if not task.example_stage:
                 title = project_name(data)
-            body = (example_intro(task.example_stage) if task.example_stage else "") + result_body(
+            body = ('<p><a href="/case-study">See the real public issue case study</a></p>' + example_intro(task.example_stage) if task.example_stage else "") + result_body(
                 data,
                 f"/tasks/{task.id}/",
                 severity_filter=severity_filter,
@@ -800,6 +823,22 @@ class RequestHandler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/healthz":
             self._bytes(b"ok\n", "text/plain; charset=utf-8")
+            return
+        if parsed.path in {"/case-study", "/case-study/", "/case-study/index.html"}:
+            case = json.loads((case_directory() / "case.json").read_text(encoding="utf-8"))
+            self._html(page("A real FANUC driver dependency issue", public_case_body(case, "/case-study/")))
+            return
+        if parsed.path.startswith("/case-study/"):
+            filename = parsed.path.removeprefix("/case-study/")
+            if filename not in ASSET_NAMES:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            path = case_directory() / filename
+            if not path.is_file():
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            content_type = "text/html; charset=utf-8" if filename.endswith(".html") else "application/json" if filename.endswith(".json") else "text/plain; charset=utf-8"
+            self._bytes(path.read_bytes(), content_type, attachment=None if filename.endswith(".html") else filename)
             return
         if parsed.path == "/example":
             query = parse_qs(parsed.query)

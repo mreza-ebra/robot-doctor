@@ -4,6 +4,8 @@ Robot Doctor statically inventories and diagnoses ROS 2 source repositories with
 
 ## Explore Before Installing
 
+Start with the [real public issue case study](docs/case_studies/fanuc/README.md): FANUC driver issue #50, a pinned upstream source snapshot, source-linked RD101 diagnosis, and a one-line local manifest correction. The original detector's miss and the general package-share lookup improvement are documented. Only static verification is claimed; no ROS runtime or upstream acceptance is implied. The local app's **View the public issue case study** opens the same saved evidence offline.
+
 The [offline showcase](docs/showcase/README.md) contains a short screen walkthrough and linked HTML reports from a real analyzer run. Download the repository or the complete showcase folder and open `docs/showcase/index.html` in a browser. The saved showcase needs no server, ROS installation, account, or repository access. GitHub's file view shows HTML source; open the downloaded HTML locally to explore the reports.
 
 The deliberately broken ROS 2 example points to a missing parameter file. Compare its source-backed `RD302` finding with a corrected scan, and download both source ZIPs to reproduce the result. These are synthetic examples, not customer incidents or evidence of runtime success. The product and sample sources retain the root proprietary license.
@@ -33,6 +35,7 @@ The [pilot kit](docs/pilot_kit.md) contains the invitation draft, 20-minute obse
 - Skips unreadable, oversized, or excess source files with explicit diagnostics instead of aborting the scan.
 - Supports progress callbacks, cancellation, diagnostic suppression, severity overrides, and dependency-noise controls.
 - Includes an offline controlled-fault example, downloadable source ZIPs, and an independently scanned corrected version.
+- Finds literal Python launch package-share lookups through imported ROS APIs and aliases, retaining source evidence without guessing dynamic package names.
 - Accepts local folders and public or token-authenticated HTTPS Git URLs from the CLI, with DNS-pinned, redirect-disabled Git transport and hardened ZIP uploads in the local browser interface.
 - Generates basic, intermediate, and expert Markdown overviews with Mermaid diagrams.
 - Records scan timestamps, duration, Git revision/branch/dirty state, input type, archive/content SHA-256, ROS distribution, Python version, and platform metadata.

@@ -1797,6 +1797,51 @@ def parameter_references(node: ast.AST | None, constants: dict[str, Any]) -> lis
     return results
 
 
+def launch_package_share_references(path: Path, root: Path) -> dict[str, list[dict[str, Any]]]:
+    """Collect literal package-share lookups without evaluating launch code.
+
+    Import qualification avoids treating an unrelated function with the same name
+    as a ROS lookup. Dynamic arguments remain unknown rather than dependencies.
+    """
+    text = read_text(path)
+    try:
+        tree = ast.parse(text, filename=relative(path, root))
+    except SyntaxError:
+        return {}
+    aliases: dict[str, str] = {}
+    for node in tree.body:
+        if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            for name in node.names:
+                aliases[name.asname or name.name] = f"{node.module}.{name.name}"
+        elif isinstance(node, ast.Import):
+            for name in node.names:
+                aliases[name.asname or name.name.split(".")[0]] = name.name if name.asname else name.name.split(".")[0]
+    # If a binding is reassigned or shadowed, do not assert which function runs.
+    shadowed = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
+    shadowed.update(node.arg for node in ast.walk(tree) if isinstance(node, ast.arg))
+    shadowed.update(node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+    apis = {
+        "launch_ros.substitutions.FindPackageShare",
+        "ament_index_python.packages.get_package_share_directory",
+        "ament_index_python.packages.get_package_share_path",
+    }
+    references: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        name = call_name(node.func)
+        first, _, suffix = name.partition(".")
+        if first in shadowed:
+            continue
+        qualified = aliases.get(first, first) + ("." + suffix if suffix else "")
+        if qualified not in apis:
+            continue
+        argument = node.args[0] if node.args else keyword_node(node, "package_name") or keyword_node(node, "package")
+        if isinstance(argument, ast.Constant) and isinstance(argument.value, str) and re.fullmatch(r"[a-z][a-z0-9_]*", argument.value):
+            references[argument.value].append(evidence(relative(path, root), node.lineno, "python_launch_package_share", source_segment(text, node)))
+    return dict(references)
+
+
 def scan_launch_python(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     text = read_text(path)
     rel_file = relative(path, root)
@@ -2547,6 +2592,12 @@ def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], cont
             None,
         ),
     )
+    if code == "RD101":
+        manifest_file = context.get("manifest_file")
+        if manifest_file:
+            suggested_files = [str(manifest_file)] + [path for path in suggested_files if path != manifest_file]
+        if context.get("runtime_reference"):
+            patch_hint = f"<exec_depend>{context.get('dependency', '<dependency>')}</exec_depend>"
     if code == "RD302":
         steps = ["Locate the intended YAML file.", "Correct the launch reference, then confirm that the intended config file is installed by this package."]
         if context.get("build_type") == "ament_python":
@@ -3483,12 +3534,14 @@ def run_diagnostics(
     for report in reports:
         package = report["package"]
         dependencies = declared_dependencies(package)
-        missing = sorted(name for name in report["referenced_packages"] if name != package["name"] and is_probable_ros_dependency(name, local_names) and name not in dependencies)
+        missing = sorted(name for name in report["referenced_packages"] if name != package["name"] and name not in dependencies)
         for name in missing:
             if config.dependency_mode == "off" or config.ignores_dependency(package["name"], name):
                 continue
             dependency_evidence = report["reference_evidence"].get(name, package["evidence"])
             extractors = {item.get("extractor") for item in dependency_evidence}
+            if not is_probable_ros_dependency(name, local_names) and "python_launch_package_share" not in extractors:
+                continue
             scope = evidence_deployment_scope(dependency_evidence, package["name"])
             if scope == "test":
                 continue
@@ -3507,6 +3560,7 @@ def run_diagnostics(
                     dependency=name,
                     direct_reference=direct_reference,
                     deployment_scope=scope,
+                    _remediation_context={"manifest_file": str(Path(package["path"]) / "package.xml"), "runtime_reference": bool(extractors) and all("launch" in str(extractor) for extractor in extractors)},
                 )
             )
         package_path = Path(data["repository"]["path"]) / package["path"]
@@ -3880,6 +3934,10 @@ def _scan_repository(root: Path) -> dict[str, Any]:
                 if action.get("package"):
                     report["referenced_packages"].append(action["package"])
                     report["reference_evidence"].setdefault(action["package"], []).extend(action["evidence"])
+            if path.name.endswith(".launch.py"):
+                for reference, reference_items in launch_package_share_references(path, root).items():
+                    report["referenced_packages"].append(reference)
+                    report["reference_evidence"].setdefault(reference, []).extend(reference_items)
             continue
         if not report:
             continue
