@@ -4,7 +4,20 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 
 ## [Unreleased]
 
+### Added
+
+- First-run value explanation, an offline "Explore an example" flow, and local-evaluation instructions before repository access is requested.
+- A bundled synthetic ROS 2 scan publisher/observer project with one intentional RD302 fault, independently scanned corrected source, and downloadable ZIPs.
+- Standalone HTML/JSON/source showcase export, a captioned 70-second walkthrough, transcript, reproducible media/export scripts, and an offline sharing bundle.
+- Pilot invitation draft, interview and observation kit, success criteria, and a maintained product backlog.
+- Regression coverage for reproducible examples, offline caching, report priority, escaping, exported materials, and first-use HTTP routes; CI exercises the HTTP smoke checks against the container.
+
 ### Changed
+
+- Put project assessment, next steps, prioritized findings, and source-evidence links before detailed architecture/inventory tables; use project names instead of opaque scan IDs.
+- Collapse detailed inventories, add report navigation, visible keyboard focus, a skip link, and narrow-viewport layout support.
+- Reject simultaneous Git and ZIP inputs with actionable error feedback.
+- Tailor missing-parameter-file repair guidance to the package build system rather than suggesting CMake rules for Python packages.
 
 - Separate production, test, and example architecture entities in JSON, HTML, and Markdown reports.
 - Count active architecture nodes consistently while retaining the total definition/instance count.

@@ -2,6 +2,22 @@
 
 Robot Doctor statically inventories and diagnoses ROS 2 source repositories without building them or requiring a ROS installation. It is repository-agnostic: TurtleBot 4 is one validation target, not a source of hardcoded architecture.
 
+## Explore Before Installing
+
+The [offline showcase](docs/showcase/README.md) contains a short screen walkthrough and linked HTML reports from a real analyzer run. Download the repository or the complete showcase folder and open `docs/showcase/index.html` in a browser. The saved showcase needs no server, ROS installation, account, or repository access. GitHub's file view shows HTML source; open the downloaded HTML locally to explore the reports.
+
+The deliberately broken ROS 2 example points to a missing parameter file. Compare its source-backed `RD302` finding with a corrected scan, and download both source ZIPs to reproduce the result. These are synthetic examples, not customer incidents or evidence of runtime success. The product and sample sources retain the root proprietary license.
+
+Once the local app is running, **Explore an example** offers the same workflow offline. **Scan your project** accepts an HTTPS Git URL or ZIP. Reports begin with the assessment, findings, evidence, and next steps; complete architecture/inventory tables remain available on demand. A static view may include both source definitions and launch instances for one runtime node.
+
+Regenerate the saved HTML/JSON/ZIP showcase using the current analyzer:
+
+```bash
+python3 tools/build_showcase.py
+```
+
+The [pilot kit](docs/pilot_kit.md) contains the invitation draft, 20-minute observation script, feedback template, and initial success criteria. [BACKLOG.md](BACKLOG.md) separates completed preparation from external validation and later product decisions. No invitations have been sent and no public demo hosting is configured.
+
 ## Capabilities
 
 - Discovers packages while excluding `build/`, `install/`, `log/`, version-control data, and trees marked by `COLCON_IGNORE` or `AMENT_IGNORE`.
@@ -16,6 +32,7 @@ Robot Doctor statically inventories and diagnoses ROS 2 source repositories with
 - Checks likely missing dependencies, topic/service/action type mismatches, orphan endpoints, QoS incompatibilities, broken launch references, missing parameter files, CMake install gaps, and invalid TF parentage/cycles.
 - Skips unreadable, oversized, or excess source files with explicit diagnostics instead of aborting the scan.
 - Supports progress callbacks, cancellation, diagnostic suppression, severity overrides, and dependency-noise controls.
+- Includes an offline controlled-fault example, downloadable source ZIPs, and an independently scanned corrected version.
 - Accepts local folders and public or token-authenticated HTTPS Git URLs from the CLI, with DNS-pinned, redirect-disabled Git transport and hardened ZIP uploads in the local browser interface.
 - Generates basic, intermediate, and expert Markdown overviews with Mermaid diagrams.
 - Records scan timestamps, duration, Git revision/branch/dirty state, input type, archive/content SHA-256, ROS distribution, Python version, and platform metadata.

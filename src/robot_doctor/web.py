@@ -23,6 +23,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .config import ConfigError, ScanConfig
+from .demo import BROKEN_REFERENCE, FIXED_REFERENCE, LAUNCH_PATH, example_files, example_zip, write_example
 from .intake import DEFAULT_MAX_CHECKOUT_BYTES, IntakeError, clone_git_repository, extract_zip_upload, repository_content_sha256
 from .overviews import basic_document, expert_document, intermediate_document
 from .scanner import ScanCancelled, scan_repository
@@ -46,6 +47,7 @@ class ScanTask:
     archive_sha256: str | None = None
     cancel_event: threading.Event = field(default_factory=threading.Event)
     thread: threading.Thread | None = None
+    example_stage: str | None = None
 
 
 class WebApplication:
@@ -66,6 +68,26 @@ class WebApplication:
         self.max_concurrent_tasks = max_concurrent_tasks
         self.max_checkout_bytes = max_checkout_bytes
         self.csrf_token = secrets.token_urlsafe(32)
+        self.example_tasks: dict[str, ScanTask] = {}
+        self.example_lock = threading.Lock()
+
+    def example(self, stage: str) -> ScanTask:
+        if stage not in {"broken", "fixed"}:
+            raise IntakeError("unknown example stage")
+        with self.example_lock:
+            if stage in self.example_tasks:
+                return self.example_tasks[stage]
+            task = self._new_task("ROS 2 scan example", "local", ScanConfig())
+            task.example_stage = stage
+            repository = task.directory / "scan-example"
+            try:
+                write_example(repository, stage)
+                self._scan(task, repository, content_sha256=repository_content_sha256(repository))
+            except Exception:
+                self._fail(task, "The bundled example could not be scanned. Try again or scan your own repository.")
+                raise
+            self.example_tasks[stage] = task
+            return task
 
     def close(self) -> None:
         for task in self.tasks.values():
@@ -159,7 +181,7 @@ class WebApplication:
         for filename, content in documents.items():
             (task.directory / filename).write_text(content.rstrip() + "\n", encoding="utf-8")
         (task.directory / "result.html").write_text(
-            page("Robot Doctor Results", result_body(data)),
+            page(project_name(data), result_body(data)),
             encoding="utf-8",
         )
         self._update(task, status="complete", summary=data["summary"], progress={"stage": "complete", "current": 1, "total": 1, "message": "Complete"})
@@ -173,13 +195,14 @@ class WebApplication:
                 setattr(task, key, value)
 
 
-def page(title: str, body: str, *, refresh: int | None = None) -> str:
+def page(title: str, body: str, *, refresh: int | None = None, home_href: str = "/", scan_href: str = "/#scan") -> str:
     refresh_tag = f'<meta http-equiv="refresh" content="{refresh}">' if refresh else ""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">{refresh_tag}<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title><style>
 body{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;max-width:1180px;margin:2rem auto;padding:0 1rem;color:#172033;background:#fbfcff}}a{{color:#174bb5}}h1,h2,h3{{line-height:1.2}}fieldset,.panel,.finding{{border:1px solid #ccd4e0;border-radius:12px;padding:1rem;margin:1rem 0;background:white}}input,select,button{{font:inherit;padding:.65rem;margin:.25rem 0}}input[type=text],input[type=url],input[type=password]{{width:min(100%,700px);box-sizing:border-box}}button{{background:#2156d9;color:white;border:0;border-radius:7px;cursor:pointer}}.muted{{color:#596579}}.error{{color:#a21b1b}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.75rem}}.metric{{border:1px solid #d8dee8;border-radius:10px;padding:.8rem;background:white}}.metric strong{{display:block;font-size:1.65rem}}.badge{{display:inline-block;border-radius:999px;padding:.18rem .55rem;font-size:.78rem;font-weight:700;text-transform:uppercase}}.badge-error{{background:#fee2e2;color:#991b1b}}.badge-warning{{background:#fef3c7;color:#92400e}}.badge-info{{background:#dbeafe;color:#1e40af}}.finding-error{{border-left:5px solid #dc2626}}.finding-warning{{border-left:5px solid #d97706}}.finding-info{{border-left:5px solid #2563eb}}.finding header,.finding>summary{{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}}.finding h3{{margin:.25rem 0}}.finding ol{{margin-top:.4rem}}.finding-body{{padding-top:.25rem}}.filters{{display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;padding:.75rem;border:1px solid #d8dee8;border-radius:10px;background:#f8fafc}}.filters label{{display:grid;gap:.2rem}}table{{border-collapse:collapse;width:100%;display:block;overflow:auto}}td,th{{border:1px solid #d8dee8;padding:.45rem;text-align:left;vertical-align:top}}th{{background:#f4f6fa}}pre{{white-space:pre-wrap;background:#f1f5f9;padding:.8rem;border-radius:8px;overflow:auto}}code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}details{{margin:.65rem 0}}summary{{cursor:pointer;font-weight:650}}.diagram{{width:100%;height:auto;border:1px solid #d8dee8;border-radius:12px;background:white}}.downloads{{display:flex;gap:.8rem;flex-wrap:wrap}}progress{{width:min(100%,700px);height:1.2rem}}@media(max-width:650px){{body{{margin:1rem auto}}.finding{{padding:.75rem}}}}
-</style></head><body><h1>{html.escape(title)}</h1>{body}</body></html>"""
+.eyebrow{{font-size:.8rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#174bb5}}.lead{{font-size:1.18rem;line-height:1.6;max-width:760px}}.actions{{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin:1.25rem 0}}.button{{display:inline-block;background:#2156d9;color:white;text-decoration:none;border:1px solid #2156d9;border-radius:7px;padding:.7rem 1rem;font-weight:650}}.button.secondary{{background:white;color:#174bb5}}.steps{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;padding:0;list-style-position:inside}}.steps li{{padding:1rem;border:1px solid #d8dee8;border-radius:10px;background:white;line-height:1.5}}.steps p{{margin:.5rem 0 0}}.assessment{{border-left:5px solid #2156d9;background:#f0f5ff}}.assessment h2{{margin-top:0}}.count-row{{display:flex;gap:1.25rem;flex-wrap:wrap}}.count-row strong{{font-size:1.3rem}}.section-nav{{display:flex;flex-wrap:wrap;gap:.8rem;margin:1rem 0 1.5rem}}.source-line{{display:block;white-space:pre-wrap;overflow-wrap:anywhere}}.source-line:target{{background:#fef3c7;outline:2px solid #92400e}}.source-link{{overflow-wrap:anywhere}}.example-notice{{border-left:5px solid #92400e}}.stage-current{{font-weight:750;text-decoration:underline;text-underline-offset:5px}}.brand{{display:flex;gap:1rem;justify-content:space-between;align-items:center;border-bottom:1px solid #d8dee8;padding-bottom:1rem;margin-bottom:1.5rem}}.brand a{{text-decoration:none;font-weight:700}}.skip{{position:absolute;left:-10000px}}.skip:focus{{left:1rem;top:1rem;background:white;padding:1rem;z-index:10}}:focus-visible{{outline:3px solid #174bb5;outline-offset:4px}}section{{scroll-margin-top:1rem}}h1{{font-size:clamp(1.8rem,4vw,2.5rem)}}p,li{{line-height:1.55}}td{{overflow-wrap:anywhere}}summary{{padding:.3rem 0}}@media(max-width:650px){{.steps{{grid-template-columns:1fr}}.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.brand{{align-items:flex-start}}.actions .button{{text-align:center}}}}
+</style></head><body><a class="skip" href="#main">Skip to content</a><header class="brand"><a href="{html.escape(home_href, quote=True)}">FaciRob · Robot Doctor</a><a href="{html.escape(scan_href, quote=True)}">Scan your project</a></header><main id="main"><h1>{html.escape(title)}</h1>{body}</main></body></html>"""
 
 
 def architecture_visual(data: dict[str, Any]) -> str:
@@ -305,12 +328,13 @@ def diagnostic_card(item: dict[str, Any]) -> str:
     commands = "\n".join(str(command) for command in remediation.get("commands", []))
     files = ", ".join(str(path) for path in remediation.get("suggested_files", []))
     evidence_items = item.get("evidence") or []
+    evidence_id = "evidence-" + hashlib.sha256(json.dumps(item, sort_keys=True).encode()).hexdigest()[:12]
     evidence_rows = "".join(
         "<tr>"
         f"<td>{html.escape(str(evidence.get('file') or ''))}</td>"
         f"<td>{html.escape(str(evidence.get('line') or ''))}</td>"
         f"<td>{html.escape(str(evidence.get('extractor') or ''))}</td>"
-        f"<td>{html.escape(str(evidence.get('snippet') or ''))}</td>"
+        f"<td><pre><code>{html.escape(str(evidence.get('snippet') or ''))}</code></pre></td>"
         "</tr>"
         for evidence in evidence_items
     )
@@ -324,13 +348,15 @@ def diagnostic_card(item: dict[str, Any]) -> str:
         details += f"<h4>Patch hint</h4><pre><code>{html.escape(str(patch_hint))}</code></pre>"
     if evidence_rows:
         details += (
-            '<details><summary>Evidence</summary><table><thead><tr><th>File</th><th>Line</th><th>Extractor</th><th>Snippet</th></tr></thead>'
-            f"<tbody>{evidence_rows}</tbody></table></details>"
+            f'<details{" open" if severity == "error" else ""}><summary>Source evidence</summary><div id="{evidence_id}"><table><thead><tr><th>File</th><th>Line</th><th>Extractor</th><th>Snippet</th></tr></thead>'
+            f"<tbody>{evidence_rows}</tbody></table></div></details>"
         )
     badge = f'<span class="badge badge-{html.escape(severity)}">{html.escape(severity)}</span>'
     metadata = f'<strong>{html.escape(str(item.get("code") or ""))}</strong><span>confidence {float(item.get("confidence", 0)):.0%}</span>'
     content = (
         f'<div class="finding-body"><p>{html.escape(str(item.get("message") or ""))}</p>'
+        + (f'<p><a class="source-link" href="#{evidence_id}">Inspect {html.escape(str(evidence_items[0].get("file") or "source"))}:{html.escape(str(evidence_items[0].get("line") or ""))}</a></p>' if evidence_items else "")
+        +
         f'<p><strong>Recommended repair:</strong> {html.escape(str(remediation.get("summary") or "Review the evidence and rescan."))}</p>'
         f"<ol>{steps}</ol>{details}</div>"
     )
@@ -338,6 +364,33 @@ def diagnostic_card(item: dict[str, Any]) -> str:
     if severity == "info":
         return f'<details class="finding finding-info"><summary>{badge}{metadata}<span>{title}</span></summary>{content}</details>'
     return f'<article class="finding finding-{html.escape(severity)}"><header>{badge}{metadata}</header><h3>{title}</h3>{content}</article>'
+
+
+def project_name(data: dict[str, Any]) -> str:
+    repository = data.get("repository") or {}
+    source = str(repository.get("source") or repository.get("name") or "ROS 2 project")
+    if source.startswith("https://"):
+        return urlparse(source).path.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") or "ROS 2 project"
+    return Path(source).name or "ROS 2 project"
+
+
+def assessment_panel(data: dict[str, Any]) -> str:
+    diagnostics = data.get("diagnostics") or []
+    counts = {severity: sum(item.get("severity") == severity for item in diagnostics) for severity in ("error", "warning", "info")}
+    important = sorted((item for item in diagnostics if item.get("severity") in {"error", "warning"}), key=lambda item: (item.get("severity") != "error", -float(item.get("confidence", 0))))
+    heading = "Review the flagged integration issues" if important else "No errors or warnings found by these static checks"
+    if important:
+        first = important[0]
+        next_step = f'Start with <strong>{html.escape(str(first.get("title") or "the first finding"))}</strong>. Inspect its source evidence, review the repair guidance, then rescan.'
+    else:
+        next_step = "Inspect the architecture and any informational findings, then verify the relevant behavior in a build or running system."
+    unresolved = (data.get("summary") or {}).get("unresolved_entities", 0)
+    return f'''<section class="panel assessment" id="assessment" aria-labelledby="assessment-title">
+<p class="eyebrow">Your project assessment</p><h2 id="assessment-title">{heading}</h2>
+<p class="count-row"><span><strong>{counts['error']}</strong> {'error' if counts['error'] == 1 else 'errors'}</span><span><strong>{counts['warning']}</strong> {'warning' if counts['warning'] == 1 else 'warnings'}</span><span><strong>{counts['info']}</strong> informational {'finding' if counts['info'] == 1 else 'findings'}</span></p>
+<p><strong>Next step:</strong> {next_step}</p>
+<p class="muted">{html.escape(str(unresolved))} unresolved expressions. Findings reflect the configured static checks and confidence estimates; they do not establish build success, runtime behavior, or hardware compatibility.</p>
+<a href="#findings">Review findings and evidence</a> · <a href="#architecture">Explore architecture</a></section>'''
 
 
 def node_table(data: dict[str, Any]) -> str:
@@ -541,6 +594,8 @@ def result_body(
     *,
     severity_filter: str = "all",
     package_filter: str = "",
+    interactive: bool = True,
+    download_links: tuple[tuple[str, str], ...] | None = None,
 ) -> str:
     summary = data.get("summary") or {}
     severity_order = {"error": 0, "warning": 1, "info": 2}
@@ -562,44 +617,77 @@ def result_body(
     shown = diagnostics[:60]
     findings = "".join(diagnostic_card(item) for item in shown)
     if not findings:
-        findings = '<div class="panel"><h3>No static findings</h3><p>No diagnostics remained after the configured policy. Runtime verification may still reveal issues.</p></div>'
+        if data.get("diagnostics") and (severity_filter != "all" or package_filter):
+            findings = '<div class="panel"><h3>No findings match these filters</h3><p>Other findings remain in this report. Reset the filters to review them.</p></div>'
+        else:
+            findings = '<div class="panel"><h3>No static findings</h3><p>No diagnostics remained after the configured policy. Runtime verification may still reveal issues.</p></div>'
     if len(diagnostics) > len(shown):
         findings += f'<p class="muted">Showing the 60 highest-priority findings; {len(diagnostics) - len(shown)} additional findings remain in JSON.</p>'
     downloads = "".join(
         f'<a href="{html.escape(link_prefix + filename, quote=True)}">{html.escape(label)}</a>'
-        for filename, label in (("result.json", "JSON"), ("basic.md", "Basic report"), ("intermediate.md", "Intermediate report"), ("expert.md", "Expert report"))
+        for filename, label in (download_links if download_links is not None else (("result.json", "JSON"), ("basic.md", "Basic report"), ("intermediate.md", "Intermediate report"), ("expert.md", "Expert report")))
     )
+    filters = findings_filter_form(data, link_prefix, severity_filter, package_filter) if interactive else "<p>All findings from this saved scan are shown below. Filtering is available in the local application.</p>"
     return f"""
-<section><h2>Scan Summary</h2>{metric_cards(summary)}<p class="muted">Static analysis only; runtime/build confirmation remains a separate verification phase.</p></section>
-<section><h2>Architecture</h2>{architecture_visual(data)}
-<details open><summary>Nodes and communication ownership</summary><table><thead><tr><th>Node</th><th>Package</th><th>Namespace</th><th>Origin</th><th>Scope</th><th>Endpoints</th></tr></thead><tbody>{node_table(data)}</tbody></table></details>
+{assessment_panel(data)}
+<nav class="section-nav" aria-label="Report sections"><a href="#findings">Findings</a><a href="#architecture">Architecture</a><a href="#inventory">Inventory</a><a href="#downloads">Downloads</a></nav>
+<section id="findings"><h2>Prioritized Findings</h2>{filters}<p class="muted">Showing {len(shown)} of {len(diagnostics)} findings matching the current filters. Informational findings are collapsed by default. Confidence is a scanner estimate, not a calibrated probability.</p>{findings}</section>
+<section id="architecture"><h2>Architecture</h2><p class="muted">This static view can contain both source definitions and launch instances for the same runtime node. It is not a count of running processes.</p>{architecture_visual(data)}
+<details><summary>Nodes and communication ownership</summary><table><thead><tr><th>Node</th><th>Package</th><th>Namespace</th><th>Origin</th><th>Scope</th><th>Endpoints</th></tr></thead><tbody>{node_table(data)}</tbody></table></details>
 <details><summary>Topics</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Publishers</th><th>Subscribers</th></tr></thead><tbody>{interface_table(data, 'topics', 'publishers', 'subscribers')}</tbody></table></details>
 <details><summary>Services</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'services', 'servers', 'clients')}</tbody></table></details>
 <details><summary>Actions</summary><table><thead><tr><th>Name</th><th>Types</th><th>Scopes</th><th>Servers</th><th>Clients</th></tr></thead><tbody>{interface_table(data, 'actions', 'servers', 'clients')}</tbody></table></details>
-<details open><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
-<details open><summary>ros2_control model</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Source</th><th>Package</th><th>Details</th><th>File</th></tr></thead><tbody>{ros2_control_table(data)}</tbody></table></details>
-<details open><summary>ros2_control command chains</summary><p class="muted">Controller → command interface → hardware component → joint/resource → transmission → actuator. Match status distinguishes unique, cross-package candidate, ambiguous, missing, and unclaimed links; unsupported deployment assumptions are never silently cross-linked.</p><table><thead><tr><th>Scope</th><th>Controller</th><th>Command interface</th><th>Match</th><th>Hardware</th><th>Candidates</th><th>Joint/resource</th><th>Transmission</th><th>Actuator</th><th>Resolved</th></tr></thead><tbody>{control_chain_table(data)}</tbody></table></details>
-<details open><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Scope</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
-<section><h2>Prioritized Findings</h2>{findings_filter_form(data, link_prefix, severity_filter, package_filter)}<p class="muted">Showing {len(shown)} of {len(diagnostics)} findings matching the current filters. Informational findings are collapsed by default.</p>{findings}</section>
-<section><h2>Reproducibility</h2><table>{provenance_table(data)}</table></section>
-<section><h2>Downloads</h2><p class="downloads">{downloads}</p></section>"""
+<details><summary>Sensors, algorithms, and actuation</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Package</th><th>Source</th></tr></thead><tbody>{role_table(data)}</tbody></table></details>
+<details><summary>ros2_control model</summary><table><thead><tr><th>Category</th><th>Scope</th><th>Name</th><th>Type</th><th>Role</th><th>Source</th><th>Package</th><th>Details</th><th>File</th></tr></thead><tbody>{ros2_control_table(data)}</tbody></table></details>
+<details><summary>ros2_control command chains</summary><p class="muted">Controller → command interface → hardware component → joint/resource → transmission → actuator. Match status distinguishes unique, cross-package candidate, ambiguous, missing, and unclaimed links; unsupported deployment assumptions are never silently cross-linked.</p><table><thead><tr><th>Scope</th><th>Controller</th><th>Command interface</th><th>Match</th><th>Hardware</th><th>Candidates</th><th>Joint/resource</th><th>Transmission</th><th>Actuator</th><th>Resolved</th></tr></thead><tbody>{control_chain_table(data)}</tbody></table></details>
+<details><summary>Modification points</summary><table><thead><tr><th>Task</th><th>Package</th><th>Scope</th><th>Path</th><th>Why</th></tr></thead><tbody>{modification_table(data)}</tbody></table></details></section>
+<section id="inventory"><details><summary>Complete scan inventory</summary>{metric_cards(summary)}<p class="muted">Static analysis only; runtime/build confirmation remains a separate verification phase.</p></details></section>
+<section><details><summary>Reproducibility</summary><table>{provenance_table(data)}</table></details></section>
+<section id="downloads"><h2>Downloads</h2><p class="downloads">{downloads}</p></section>"""
 
 
 def home_page(csrf_token: str, error: str | None = None) -> str:
-    error_html = f'<p class="error">{html.escape(error)}</p>' if error else ""
+    error_html = f'<div class="panel error" role="alert"><h2>We could not start the scan</h2><p>{html.escape(error)}</p><a href="#scan">Review your repository input</a></div>' if error else ""
     return page(
         "Robot Doctor",
-        f"""<p>Upload a ROS 2 repository ZIP or provide an HTTPS Git URL, then press <strong>Scan</strong>.</p>{error_html}
+        f"""<p class="eyebrow">ROS 2 project analysis by FaciRob</p>
+<p class="lead">Map your ROS 2 project and inspect potential integration issues—with links to the source. No build or ROS installation required for analysis.</p>
+{error_html}
+<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See what you can learn before sharing a project</h2>
+<p>Explore a small ROS 2 project with an intentionally broken launch reference. Inspect the source evidence, then compare the corrected scan.</p>
+<div class="actions"><a class="button" href="/example">Explore an example</a><a class="button secondary" href="#scan">Scan your project</a></div>
+<p class="muted">The example runs offline once this app is open. No account, repository access, or robot connection needed.</p></section>
+<ol class="steps" aria-label="How it works"><li><strong>Choose a project</strong><p>Use an HTTPS Git URL or a repository ZIP.</p></li><li><strong>Inspect the evidence</strong><p>Review important findings and trace them to source files.</p></li><li><strong>Plan your next check</strong><p>Review changes, rescan, then verify behavior separately.</p></li></ol>
+<section id="scan" aria-labelledby="scan-title"><h2 id="scan-title">Scan your ROS 2 repository</h2>
+<p>Start with a public project, or use a ZIP for code that should stay on this computer.</p>
 <form action="/scan" method="post" enctype="multipart/form-data">
 <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">
-<fieldset><legend>Repository</legend><label>Git URL<br><input type="url" name="git_url" placeholder="https://github.com/owner/repository.git"></label><p class="muted">or</p><label>Repository ZIP<br><input type="file" name="repository_zip" accept=".zip,application/zip"></label></fieldset>
+<fieldset><legend>Choose one repository source</legend><label>Git URL<br><input type="url" name="git_url" placeholder="https://github.com/owner/repository.git" aria-describedby="git-help"></label><p id="git-help" class="muted">HTTPS only. Git contacts the repository host to download the source.</p><p class="muted">or</p><label>Repository ZIP<br><input type="file" name="repository_zip" accept=".zip,application/zip" aria-describedby="zip-help"></label><p id="zip-help" class="muted">Upload limit: 100 MiB. Include the ROS 2 source packages and package.xml files.</p></fieldset>
 <details><summary>Advanced options</summary><fieldset><legend>Private access and noise controls</legend><label>Private repository token (optional)<br><input type="password" name="git_token" autocomplete="off" placeholder="Fine-grained read-only token"></label><p class="muted">The token is passed only to the clone process, is never written to a task or report, and should have read-only repository access.</p><label>Dependency diagnostics <select name="dependency_mode"><option value="direct">Direct references (recommended)</option><option value="off">Off</option><option value="all">All inferred references</option></select></label><br><label>Suppress codes<br><input type="text" name="suppress_codes" placeholder="RD101,RD202"></label></fieldset></details>
-<button type="submit">Scan repository</button></form>
-<p class="muted">Runs locally on this computer. Results are temporary and disappear when this application closes. ZIP uploads are size-limited and safely extracted. Dynamic ROS runtime behavior still requires optional runtime verification.</p>""",
+<button type="submit">Scan repository</button></form></section>
+<section class="panel" id="local-use"><h2>Your code stays in the local analysis workflow</h2>
+<p>Analysis runs on this computer. The analyzer makes no LLM requests and does not build or execute repository code. ZIP contents are not sent to a cloud analysis service.</p>
+<p>Results are temporary and disappear when this application closes. Download reports to retain them. Static findings cannot confirm live ROS behavior or hardware compatibility.</p>
+<details><summary>How to evaluate your own project locally</summary><ol><li>Start Robot Doctor using Docker or the Python installation described in the README.</li><li>Choose a repository ZIP to avoid granting Git access, or use a public HTTPS URL.</li><li>Inspect a finding and its source evidence. Download a report before closing the app.</li></ol><p>The current beta is a local tool. It is not a public multi-user hosting service.</p></details></section>""",
     )
 
 
+def example_intro(stage: str, *, broken_href: str = "/example?stage=broken", fixed_href: str = "/example?stage=fixed", zip_href: str | None = None) -> str:
+    current = "Intentional fault" if stage == "broken" else "Corrected reference"
+    zip_href = zip_href or f"/example/{stage}.zip"
+    source = html.escape(example_files(stage)[LAUNCH_PATH])
+    return f'''<section class="panel example-notice"><p class="eyebrow">Guided example · {current}</p>
+<h2>Trace a missing parameter file to its launch reference</h2>
+<p>This synthetic ROS 2 project publishes and observes <code>/scan</code>. The fault was deliberately introduced for this demonstration; it is not a customer incident or a robot navigation stack.</p>
+<ol><li>Inspect the <code>RD302</code> finding in the intentional-fault scan.</li><li>Compare the launch reference with the supplied <code>config/scan.yaml</code>.</li><li>Review the one-line correction and the separately computed corrected scan.</li></ol>
+<nav class="actions" aria-label="Example stages"><a class="button {'secondary' if stage == 'fixed' else 'stage-current'}" href="{html.escape(broken_href, quote=True)}" {'aria-current="page"' if stage == 'broken' else ''}>1. Intentional fault</a><a class="button {'secondary' if stage == 'broken' else 'stage-current'}" href="{html.escape(fixed_href, quote=True)}" {'aria-current="page"' if stage == 'fixed' else ''}>2. Corrected scan</a><a href="{html.escape(zip_href, quote=True)}">Download this example ZIP</a></nav>
+<p><a href="#findings">Inspect the finding and source evidence</a> · <a href="#assessment">Read this scan's assessment</a></p>
+<details><summary>Inspect the launch file and one-line correction</summary><p><code>{LAUNCH_PATH}</code></p><pre><code>{source}</code></pre><p>The reviewed change:</p><pre><code>- {html.escape(BROKEN_REFERENCE)}\n+ {html.escape(FIXED_REFERENCE)}</code></pre><p>The correction is supplied for comparison. Robot Doctor has not autonomously edited or executed this project.</p></details>
+<p><strong>Verification boundary:</strong> a rescan checks the source reference. It does not prove build success, message delivery, or hardware operation. Download the project for your own inspection and separate ROS testing.</p></section>'''
+
+
 def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", package_filter: str = "") -> str:
+    title = "ROS 2 scan example" if task.example_stage else project_name({"repository": {"source": task.source}})
     progress = task.progress
     total = progress.get("total") or 1
     percent = min(100, int(100 * progress.get("current", 0) / total))
@@ -614,7 +702,9 @@ def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", 
     elif task.status == "complete":
         try:
             data = json.loads((task.directory / "result.json").read_text(encoding="utf-8"))
-            body += result_body(
+            if not task.example_stage:
+                title = project_name(data)
+            body = (example_intro(task.example_stage) if task.example_stage else "") + result_body(
                 data,
                 f"/tasks/{task.id}/",
                 severity_filter=severity_filter,
@@ -625,7 +715,7 @@ def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", 
     elif task.error:
         body += f'<p class="error">{html.escape(task.error)}</p>'
     body += '<p><a href="/">Start another scan</a></p>'
-    return page(f"Scan {task.id[:8]}", body, refresh=refresh)
+    return page(title, body, refresh=refresh)
 
 
 def parse_multipart(content_type: str, payload: bytes) -> tuple[dict[str, str], tuple[str, bytes] | None]:
@@ -711,6 +801,22 @@ class RequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/healthz":
             self._bytes(b"ok\n", "text/plain; charset=utf-8")
             return
+        if parsed.path == "/example":
+            query = parse_qs(parsed.query)
+            stage = (query.get("stage") or ["broken"])[0]
+            if stage not in {"broken", "fixed"}:
+                self.send_error(HTTPStatus.NOT_FOUND, "unknown example stage")
+                return
+            try:
+                task = self.server.application.example(stage)
+                self._html(task_page(task, self.server.application.csrf_token))
+            except IntakeError as exc:
+                self._html(home_page(self.server.application.csrf_token, str(exc)), status=HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        if parsed.path in {"/example/broken.zip", "/example/fixed.zip"}:
+            stage = parsed.path.rsplit("/", 1)[-1].removesuffix(".zip")
+            self._bytes(example_zip(stage), "application/zip", attachment=f"robot-doctor-example-{stage}.zip")
+            return
         parts = parsed.path.strip("/").split("/")
         if len(parts) >= 2 and parts[0] == "tasks":
             task = self.server.application.tasks.get(parts[1])
@@ -783,6 +889,8 @@ class RequestHandler(BaseHTTPRequestHandler):
             suppressions = frozenset(code.strip() for code in fields.get("suppress_codes", "").split(",") if code.strip())
             config = ScanConfig(dependency_mode=fields.get("dependency_mode", "direct"), suppress_diagnostics=suppressions)
             config.validate()
+            if upload and upload[1] and fields.get("git_url", "").strip():
+                raise IntakeError("choose one source: a Git URL or a ZIP archive, not both")
             if upload and upload[1]:
                 task = self.server.application.submit_upload(upload[0], upload[1], config)
             elif fields.get("git_url", "").strip():

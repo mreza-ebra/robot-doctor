@@ -2547,6 +2547,12 @@ def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], cont
             None,
         ),
     )
+    if code == "RD302":
+        steps = ["Locate the intended YAML file.", "Correct the launch reference, then confirm that the intended config file is installed by this package."]
+        if context.get("build_type") == "ament_python":
+            patch_hint = "For this ament_python package, verify that setup.py data_files includes the intended YAML under share/<package>/config. Review existing entries before adding files."
+        elif context.get("build_type") != "ament_cmake":
+            patch_hint = "Check config-file installation using this package's build system: setup.py data_files for ament_python, or CMake install rules for ament_cmake."
     interface_name = context.get("interface")
     substitutions = {
         "<topic>": context.get("topic"),
@@ -3659,7 +3665,9 @@ def run_diagnostics(
                     parameter["resolved_path"] = resolved
                     parameter["exists"] = exists
                     if exists is False:
-                        diagnostics.append(diagnostic("RD302", "error", "Missing launch parameter file", f"Parameter file '{parameter.get('value')}' does not exist.", action["evidence"], 0.94, launch_file=launch_file["file"], package=launch_file["package"]))
+                        package_candidates = by_name.get(launch_file["package"], [])
+                        build_type = package_candidates[0]["package"].get("build_type") if len(package_candidates) == 1 else None
+                        diagnostics.append(diagnostic("RD302", "error", "Missing launch parameter file", f"Parameter file '{parameter.get('value')}' does not exist.", action["evidence"], 0.94, launch_file=launch_file["file"], package=launch_file["package"], _remediation_context={"build_type": build_type}))
             package_name = action.get("package")
             executable = action.get("executable")
             if action.get("kind") == "node" and package_name in local_executables and executable and action.get("resolved") and local_executables[package_name] and executable not in local_executables[package_name]:

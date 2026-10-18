@@ -1,0 +1,1028 @@
+{
+  "architecture": {
+    "actions": [],
+    "actuation": [],
+    "algorithms": [],
+    "modification_points": [
+      {
+        "confidence": 0.82,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "yaml_parameter_tree",
+            "file": "scan_demo/config/scan.yaml",
+            "line": 1,
+            "snippet": "ros__parameters"
+          }
+        ],
+        "fact_type": "inferred",
+        "package": "scan_demo",
+        "path": "scan_demo/config/scan.yaml",
+        "reason": "ROS parameter file detected",
+        "task": "Tune runtime behavior and algorithm settings"
+      },
+      {
+        "confidence": 0.85,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "launch_classifier",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 1,
+            "snippet": "scan.launch.py"
+          }
+        ],
+        "fact_type": "inferred",
+        "package": "scan_demo",
+        "path": "scan_demo/launch/scan.launch.py",
+        "reason": "launch entry point detected",
+        "task": "Change startup, composition, namespaces, or remappings"
+      },
+      {
+        "confidence": 0.8,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 11,
+            "snippet": "self.create_publisher(LaserScan, \"/scan\", qos_profile_sensor_data)"
+          }
+        ],
+        "fact_type": "inferred",
+        "package": "scan_demo",
+        "path": "scan_demo/scan_demo/nodes.py",
+        "reason": "source file contains ROS entities",
+        "task": "Change node behavior or ROS communication"
+      }
+    ],
+    "nodes": [
+      {
+        "action_clients": [],
+        "action_servers": [],
+        "active": true,
+        "class": "ScanSource",
+        "confidence": 1.0,
+        "definition_id": null,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 9,
+            "snippet": "super().__init__(\"scan_source\")"
+          }
+        ],
+        "executable": null,
+        "executables": [
+          "scan_observer",
+          "scan_source"
+        ],
+        "fact_type": "detected",
+        "id": "source:scan_demo:ScanSource:scan_demo/scan_demo/nodes.py:9:0",
+        "launch_condition": null,
+        "lifecycle": false,
+        "line": 9,
+        "name": "scan_source",
+        "namespace": "",
+        "origin": "source",
+        "package": "scan_demo",
+        "parameters": [
+          {
+            "confidence": 1.0,
+            "effective": true,
+            "evidence": [
+              {
+                "extractor": "python_ast",
+                "file": "scan_demo/scan_demo/nodes.py",
+                "line": 10,
+                "snippet": "self.declare_parameter(\"frame_id\", \"laser\")"
+              }
+            ],
+            "name": "frame_id",
+            "precedence_rank": 10,
+            "selector": null,
+            "source": "code_default",
+            "type": "string",
+            "value": "laser"
+          }
+        ],
+        "publishers": [
+          {
+            "class": "ScanSource",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "extractor": "python_ast",
+                "file": "scan_demo/scan_demo/nodes.py",
+                "line": 11,
+                "snippet": "self.create_publisher(LaserScan, \"/scan\", qos_profile_sensor_data)"
+              }
+            ],
+            "fact_type": "detected",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "kind": "publisher",
+            "lifecycle": false,
+            "line": 11,
+            "name": "/scan",
+            "node_id": "source:scan_demo:ScanSource:scan_demo/scan_demo/nodes.py:9:0",
+            "node_name": "scan_source",
+            "package": "scan_demo",
+            "qos": {
+              "dynamic": true,
+              "expression": "qos_profile_sensor_data"
+            },
+            "resolved": true,
+            "type": "sensor_msgs/msg/LaserScan"
+          }
+        ],
+        "resolved": true,
+        "service_clients": [],
+        "service_servers": [],
+        "source_file": "scan_demo/scan_demo/nodes.py",
+        "subscriptions": []
+      },
+      {
+        "action_clients": [],
+        "action_servers": [],
+        "active": true,
+        "class": "ScanObserver",
+        "confidence": 1.0,
+        "definition_id": null,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 26,
+            "snippet": "super().__init__(\"scan_observer\")"
+          }
+        ],
+        "executable": null,
+        "executables": [
+          "scan_observer",
+          "scan_source"
+        ],
+        "fact_type": "detected",
+        "id": "source:scan_demo:ScanObserver:scan_demo/scan_demo/nodes.py:26:1",
+        "launch_condition": null,
+        "lifecycle": false,
+        "line": 26,
+        "name": "scan_observer",
+        "namespace": "",
+        "origin": "source",
+        "package": "scan_demo",
+        "parameters": [],
+        "publishers": [],
+        "resolved": true,
+        "service_clients": [],
+        "service_servers": [],
+        "source_file": "scan_demo/scan_demo/nodes.py",
+        "subscriptions": [
+          {
+            "class": "ScanObserver",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "extractor": "python_ast",
+                "file": "scan_demo/scan_demo/nodes.py",
+                "line": 27,
+                "snippet": "self.create_subscription( LaserScan, \"/scan\", self.receive_scan, qos_profile_sensor_data)"
+              }
+            ],
+            "fact_type": "detected",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "kind": "subscription",
+            "lifecycle": false,
+            "line": 27,
+            "name": "/scan",
+            "node_id": "source:scan_demo:ScanObserver:scan_demo/scan_demo/nodes.py:26:1",
+            "node_name": "scan_observer",
+            "package": "scan_demo",
+            "qos": {
+              "dynamic": true,
+              "expression": "qos_profile_sensor_data"
+            },
+            "resolved": true,
+            "type": "sensor_msgs/msg/LaserScan"
+          }
+        ]
+      },
+      {
+        "action_clients": [],
+        "action_servers": [],
+        "active": true,
+        "class": null,
+        "confidence": 1.0,
+        "definition_id": null,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_launch_ast",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 9,
+            "snippet": "Node(package=\"scan_demo\", executable=\"scan_source\", name=\"scan_source\", parameters=[PathJoinSubstitution([FindPackageShare(\"scan_demo\"), \"config\", \"scan.yaml\"])])"
+          }
+        ],
+        "executable": "scan_source",
+        "executables": [
+          "scan_source"
+        ],
+        "fact_type": "detected",
+        "id": "launch:scan_demo/launch/scan.launch.py:0::scan_source",
+        "launch_condition": null,
+        "lifecycle": false,
+        "line": 9,
+        "name": "scan_source",
+        "namespace": "",
+        "origin": "launch",
+        "package": "scan_demo",
+        "parameters": [
+          {
+            "confidence": 0.96,
+            "effective": true,
+            "evidence": [
+              {
+                "extractor": "yaml_parameter_tree",
+                "file": "scan_demo/config/scan.yaml",
+                "line": 3,
+                "snippet": "frame_id: laser"
+              }
+            ],
+            "name": "frame_id",
+            "precedence_rank": 23,
+            "selector": "scan_source",
+            "source": "yaml_override",
+            "type": "string",
+            "value": "laser"
+          }
+        ],
+        "publishers": [],
+        "resolved": true,
+        "service_clients": [],
+        "service_servers": [],
+        "source_file": "scan_demo/launch/scan.launch.py",
+        "subscriptions": []
+      },
+      {
+        "action_clients": [],
+        "action_servers": [],
+        "active": true,
+        "class": null,
+        "confidence": 1.0,
+        "definition_id": null,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_launch_ast",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 11,
+            "snippet": "Node(package=\"scan_demo\", executable=\"scan_observer\", name=\"scan_observer\")"
+          }
+        ],
+        "executable": "scan_observer",
+        "executables": [
+          "scan_observer"
+        ],
+        "fact_type": "detected",
+        "id": "launch:scan_demo/launch/scan.launch.py:1::scan_observer",
+        "launch_condition": null,
+        "lifecycle": false,
+        "line": 11,
+        "name": "scan_observer",
+        "namespace": "",
+        "origin": "launch",
+        "package": "scan_demo",
+        "parameters": [],
+        "publishers": [],
+        "resolved": true,
+        "service_clients": [],
+        "service_servers": [],
+        "source_file": "scan_demo/launch/scan.launch.py",
+        "subscriptions": []
+      }
+    ],
+    "ros2_control": {
+      "command_interfaces": [],
+      "control_chains": [],
+      "controllers": [],
+      "hardware_components": [],
+      "plugins": [],
+      "state_interfaces": [],
+      "transmissions": []
+    },
+    "sensors": [
+      {
+        "class": "ScanSource",
+        "confidence": 0.78,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 11,
+            "snippet": "self.create_publisher(LaserScan, \"/scan\", qos_profile_sensor_data)"
+          }
+        ],
+        "fact_type": "inferred",
+        "file": "scan_demo/scan_demo/nodes.py",
+        "kind": "publisher",
+        "lifecycle": false,
+        "line": 11,
+        "name": "/scan",
+        "package": "scan_demo",
+        "qos": {
+          "dynamic": true,
+          "expression": "qos_profile_sensor_data"
+        },
+        "resolved": true,
+        "role": "sensor data interface",
+        "type": "sensor_msgs/msg/LaserScan"
+      },
+      {
+        "class": "ScanObserver",
+        "confidence": 0.78,
+        "deployment_scope": "example",
+        "evidence": [
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 27,
+            "snippet": "self.create_subscription( LaserScan, \"/scan\", self.receive_scan, qos_profile_sensor_data)"
+          }
+        ],
+        "fact_type": "inferred",
+        "file": "scan_demo/scan_demo/nodes.py",
+        "kind": "subscription",
+        "lifecycle": false,
+        "line": 27,
+        "name": "/scan",
+        "package": "scan_demo",
+        "qos": {
+          "dynamic": true,
+          "expression": "qos_profile_sensor_data"
+        },
+        "resolved": true,
+        "role": "sensor data interface",
+        "type": "sensor_msgs/msg/LaserScan"
+      }
+    ],
+    "services": [],
+    "tf": {
+      "broadcasters": [],
+      "frames": [],
+      "transforms": []
+    },
+    "topics": [
+      {
+        "confidence": 1.0,
+        "deployment_scopes": [
+          "example"
+        ],
+        "evidence": [
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 11,
+            "snippet": "self.create_publisher(LaserScan, \"/scan\", qos_profile_sensor_data)"
+          },
+          {
+            "extractor": "python_ast",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 27,
+            "snippet": "self.create_subscription( LaserScan, \"/scan\", self.receive_scan, qos_profile_sensor_data)"
+          }
+        ],
+        "fact_type": "detected",
+        "name": "/scan",
+        "publishers": [
+          {
+            "class": "ScanSource",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "extractor": "python_ast",
+                "file": "scan_demo/scan_demo/nodes.py",
+                "line": 11,
+                "snippet": "self.create_publisher(LaserScan, \"/scan\", qos_profile_sensor_data)"
+              }
+            ],
+            "fact_type": "detected",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "kind": "publisher",
+            "lifecycle": false,
+            "line": 11,
+            "name": "/scan",
+            "node_id": "source:scan_demo:ScanSource:scan_demo/scan_demo/nodes.py:9:0",
+            "node_name": "scan_source",
+            "package": "scan_demo",
+            "qos": {
+              "dynamic": true,
+              "expression": "qos_profile_sensor_data"
+            },
+            "resolved": true,
+            "type": "sensor_msgs/msg/LaserScan"
+          }
+        ],
+        "subscribers": [
+          {
+            "class": "ScanObserver",
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "extractor": "python_ast",
+                "file": "scan_demo/scan_demo/nodes.py",
+                "line": 27,
+                "snippet": "self.create_subscription( LaserScan, \"/scan\", self.receive_scan, qos_profile_sensor_data)"
+              }
+            ],
+            "fact_type": "detected",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "kind": "subscription",
+            "lifecycle": false,
+            "line": 27,
+            "name": "/scan",
+            "node_id": "source:scan_demo:ScanObserver:scan_demo/scan_demo/nodes.py:26:1",
+            "node_name": "scan_observer",
+            "package": "scan_demo",
+            "qos": {
+              "dynamic": true,
+              "expression": "qos_profile_sensor_data"
+            },
+            "resolved": true,
+            "type": "sensor_msgs/msg/LaserScan"
+          }
+        ],
+        "types": [
+          "sensor_msgs/msg/LaserScan"
+        ]
+      }
+    ]
+  },
+  "configuration": {
+    "dependency_mode": "direct",
+    "ignore_dependencies": [],
+    "ignore_dependency_pairs": [],
+    "max_file_size_bytes": 5242880,
+    "max_files": 100000,
+    "max_repository_entries": 250000,
+    "max_total_size_bytes": 268435456,
+    "minimum_diagnostic_confidence": 0.0,
+    "severity_overrides": {},
+    "suppress_diagnostics": [],
+    "suppressed_diagnostics": 0
+  },
+  "diagnostics": [],
+  "launch_graph": {
+    "edges": [],
+    "files": [
+      {
+        "actions": [
+          {
+            "composed": false,
+            "condition": null,
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "extractor": "python_launch_ast",
+                "file": "scan_demo/launch/scan.launch.py",
+                "line": 9,
+                "snippet": "Node(package=\"scan_demo\", executable=\"scan_source\", name=\"scan_source\", parameters=[PathJoinSubstitution([FindPackageShare(\"scan_demo\"), \"config\", \"scan.yaml\"])])"
+              }
+            ],
+            "executable": "scan_source",
+            "fact_type": "detected",
+            "kind": "node",
+            "lifecycle": false,
+            "line": 9,
+            "name": "scan_source",
+            "namespace": null,
+            "package": "scan_demo",
+            "parameters": [
+              {
+                "confidence": 0.8,
+                "exists": true,
+                "kind": "file",
+                "resolved": true,
+                "resolved_path": "scan_demo/config/scan.yaml",
+                "value": "$(find-pkg-share scan_demo)/config/scan.yaml"
+              }
+            ],
+            "remappings": [],
+            "resolved": true,
+            "source_file": "scan_demo/launch/scan.launch.py"
+          },
+          {
+            "composed": false,
+            "condition": null,
+            "confidence": 1.0,
+            "evidence": [
+              {
+                "extractor": "python_launch_ast",
+                "file": "scan_demo/launch/scan.launch.py",
+                "line": 11,
+                "snippet": "Node(package=\"scan_demo\", executable=\"scan_observer\", name=\"scan_observer\")"
+              }
+            ],
+            "executable": "scan_observer",
+            "fact_type": "detected",
+            "kind": "node",
+            "lifecycle": false,
+            "line": 11,
+            "name": "scan_observer",
+            "namespace": null,
+            "package": "scan_demo",
+            "parameters": [],
+            "remappings": [],
+            "resolved": true,
+            "source_file": "scan_demo/launch/scan.launch.py"
+          }
+        ],
+        "arguments": [],
+        "confidence": 1.0,
+        "evidence": [
+          {
+            "extractor": "launch_classifier",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 1,
+            "snippet": "scan.launch.py"
+          }
+        ],
+        "fact_type": "detected",
+        "file": "scan_demo/launch/scan.launch.py",
+        "format": "python",
+        "includes": [],
+        "package": "scan_demo"
+      }
+    ]
+  },
+  "limitations": [
+    "Static analysis cannot prove runtime names, substitutions, remappings, plugin loading, or external nodes.",
+    "Orphan endpoint and dependency diagnostics may be satisfied by another repository or installed package.",
+    "Static source extraction cannot prove whether endpoints in mutually exclusive branches execute together; same-node type conflicts remain advisory unless distinct unconditional launch instances prove co-deployment.",
+    "YAML launch parsing covers standard declarative ROS 2 forms but preserves unsupported dynamic expressions as unresolved.",
+    "Best-effort Xacro expansion resolves declarative include-visible macros, arguments, and properties; dynamic includes, conditionals, arbitrary expressions, and executable extensions remain unresolved and are never executed.",
+    "Runtime TF and QoS behavior should be confirmed on a running system.",
+    "Static control chains use package and deployment scope to prevent unsafe cross-robot links and report equally ranked hardware candidates as ambiguous; they do not prove controller loading, hardware activation, successful builds, or runtime communication."
+  ],
+  "package_count": 1,
+  "packages": [
+    {
+      "action_clients": [],
+      "action_servers": [],
+      "declared_parameters": [
+        {
+          "class": "ScanSource",
+          "confidence": 1.0,
+          "default": "laser",
+          "default_resolved": true,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/scan_demo/nodes.py",
+              "line": 10,
+              "snippet": "self.declare_parameter(\"frame_id\", \"laser\")"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/scan_demo/nodes.py",
+          "kind": "parameter",
+          "lifecycle": false,
+          "line": 10,
+          "name": "frame_id",
+          "resolved": true,
+          "type": null
+        }
+      ],
+      "executables": [
+        {
+          "confidence": 0.95,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/setup.py",
+              "line": 8,
+              "snippet": "scan_source = scan_demo.nodes:source_main"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/setup.py",
+          "kind": "executable",
+          "line": 8,
+          "name": "scan_source",
+          "resolved": true,
+          "target": "scan_demo.nodes:source_main",
+          "type": "python_entry_point"
+        },
+        {
+          "confidence": 0.95,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/setup.py",
+              "line": 9,
+              "snippet": "scan_observer = scan_demo.nodes:observer_main"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/setup.py",
+          "kind": "executable",
+          "line": 9,
+          "name": "scan_observer",
+          "resolved": true,
+          "target": "scan_demo.nodes:observer_main",
+          "type": "python_entry_point"
+        }
+      ],
+      "interface_files": {},
+      "interfaces": [],
+      "launch_files": [
+        {
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "launch_classifier",
+              "file": "scan_demo/launch/scan.launch.py",
+              "line": 1,
+              "snippet": "scan.launch.py"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/launch/scan.launch.py",
+          "format": "python"
+        }
+      ],
+      "launched_nodes": [
+        {
+          "composed": false,
+          "condition": null,
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "python_launch_ast",
+              "file": "scan_demo/launch/scan.launch.py",
+              "line": 9,
+              "snippet": "Node(package=\"scan_demo\", executable=\"scan_source\", name=\"scan_source\", parameters=[PathJoinSubstitution([FindPackageShare(\"scan_demo\"), \"config\", \"scan.yaml\"])])"
+            }
+          ],
+          "executable": "scan_source",
+          "fact_type": "detected",
+          "kind": "node",
+          "lifecycle": false,
+          "line": 9,
+          "name": "scan_source",
+          "namespace": null,
+          "package": "scan_demo",
+          "parameters": [
+            {
+              "confidence": 0.8,
+              "exists": true,
+              "kind": "file",
+              "resolved": true,
+              "resolved_path": "scan_demo/config/scan.yaml",
+              "value": "$(find-pkg-share scan_demo)/config/scan.yaml"
+            }
+          ],
+          "remappings": [],
+          "resolved": true,
+          "source_file": "scan_demo/launch/scan.launch.py"
+        },
+        {
+          "composed": false,
+          "condition": null,
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "python_launch_ast",
+              "file": "scan_demo/launch/scan.launch.py",
+              "line": 11,
+              "snippet": "Node(package=\"scan_demo\", executable=\"scan_observer\", name=\"scan_observer\")"
+            }
+          ],
+          "executable": "scan_observer",
+          "fact_type": "detected",
+          "kind": "node",
+          "lifecycle": false,
+          "line": 11,
+          "name": "scan_observer",
+          "namespace": null,
+          "package": "scan_demo",
+          "parameters": [],
+          "remappings": [],
+          "resolved": true,
+          "source_file": "scan_demo/launch/scan.launch.py"
+        }
+      ],
+      "node_names": [
+        {
+          "class": "ScanSource",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/scan_demo/nodes.py",
+              "line": 9,
+              "snippet": "super().__init__(\"scan_source\")"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/scan_demo/nodes.py",
+          "kind": "node_name",
+          "lifecycle": false,
+          "line": 9,
+          "name": "scan_source",
+          "resolved": true,
+          "type": null
+        },
+        {
+          "class": "ScanObserver",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/scan_demo/nodes.py",
+              "line": 26,
+              "snippet": "super().__init__(\"scan_observer\")"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/scan_demo/nodes.py",
+          "kind": "node_name",
+          "lifecycle": false,
+          "line": 26,
+          "name": "scan_observer",
+          "resolved": true,
+          "type": null
+        }
+      ],
+      "package": {
+        "build_type": "ament_python",
+        "confidence": 1.0,
+        "dependencies": {
+          "buildtool_depend": [
+            "ament_python"
+          ],
+          "depend": [
+            "rclpy",
+            "sensor_msgs"
+          ],
+          "exec_depend": [
+            "launch",
+            "launch_ros"
+          ]
+        },
+        "description": "Robot Doctor controlled scan example",
+        "evidence": [
+          {
+            "extractor": "package_xml",
+            "file": "scan_demo/package.xml",
+            "line": 1,
+            "snippet": "<package>"
+          }
+        ],
+        "fact_type": "detected",
+        "name": "scan_demo",
+        "path": "scan_demo",
+        "version": "0.1.0"
+      },
+      "parameter_files": [
+        {
+          "confidence": 0.96,
+          "evidence": [
+            {
+              "extractor": "yaml_parameter_tree",
+              "file": "scan_demo/config/scan.yaml",
+              "line": 1,
+              "snippet": "ros__parameters"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/config/scan.yaml",
+          "parameters": [
+            {
+              "confidence": 0.96,
+              "evidence": [
+                {
+                  "extractor": "yaml_parameter_tree",
+                  "file": "scan_demo/config/scan.yaml",
+                  "line": 3,
+                  "snippet": "frame_id: laser"
+                }
+              ],
+              "fact_type": "detected",
+              "file": "scan_demo/config/scan.yaml",
+              "kind": "parameter_override",
+              "line": 3,
+              "name": "frame_id",
+              "namespace": "",
+              "parameter_path": [
+                "frame_id"
+              ],
+              "precedence_rank": 22,
+              "resolved": true,
+              "selector": "scan_source",
+              "selector_specificity": 2,
+              "type": "string",
+              "value": "laser"
+            }
+          ],
+          "selectors": [
+            {
+              "namespace": "",
+              "selector": "scan_source",
+              "specificity": 2
+            }
+          ]
+        }
+      ],
+      "parameter_overrides": [
+        {
+          "confidence": 0.96,
+          "evidence": [
+            {
+              "extractor": "yaml_parameter_tree",
+              "file": "scan_demo/config/scan.yaml",
+              "line": 3,
+              "snippet": "frame_id: laser"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/config/scan.yaml",
+          "kind": "parameter_override",
+          "line": 3,
+          "name": "frame_id",
+          "namespace": "",
+          "parameter_path": [
+            "frame_id"
+          ],
+          "precedence_rank": 22,
+          "resolved": true,
+          "selector": "scan_source",
+          "selector_specificity": 2,
+          "type": "string",
+          "value": "laser"
+        }
+      ],
+      "plugins": [],
+      "publishers": [
+        {
+          "class": "ScanSource",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/scan_demo/nodes.py",
+              "line": 11,
+              "snippet": "self.create_publisher(LaserScan, \"/scan\", qos_profile_sensor_data)"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/scan_demo/nodes.py",
+          "kind": "publisher",
+          "lifecycle": false,
+          "line": 11,
+          "name": "/scan",
+          "qos": {
+            "dynamic": true,
+            "expression": "qos_profile_sensor_data"
+          },
+          "resolved": true,
+          "type": "sensor_msgs/msg/LaserScan"
+        }
+      ],
+      "reference_evidence": {
+        "rclpy": [
+          {
+            "extractor": "python_import",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 1,
+            "snippet": "rclpy"
+          }
+        ],
+        "scan_demo": [
+          {
+            "extractor": "python_launch_ast",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 9,
+            "snippet": "Node(package=\"scan_demo\", executable=\"scan_source\", name=\"scan_source\", parameters=[PathJoinSubstitution([FindPackageShare(\"scan_demo\"), \"config\", \"scan.yaml\"])])"
+          },
+          {
+            "extractor": "python_launch_ast",
+            "file": "scan_demo/launch/scan.launch.py",
+            "line": 11,
+            "snippet": "Node(package=\"scan_demo\", executable=\"scan_observer\", name=\"scan_observer\")"
+          }
+        ],
+        "sensor_msgs": [
+          {
+            "extractor": "python_import",
+            "file": "scan_demo/scan_demo/nodes.py",
+            "line": 1,
+            "snippet": "sensor_msgs"
+          }
+        ],
+        "setuptools": [
+          {
+            "extractor": "python_import",
+            "file": "scan_demo/setup.py",
+            "line": 1,
+            "snippet": "setuptools"
+          }
+        ]
+      },
+      "referenced_packages": [
+        "rclpy",
+        "scan_demo",
+        "sensor_msgs",
+        "setuptools"
+      ],
+      "service_clients": [],
+      "service_servers": [],
+      "subscriptions": [
+        {
+          "class": "ScanObserver",
+          "confidence": 1.0,
+          "evidence": [
+            {
+              "extractor": "python_ast",
+              "file": "scan_demo/scan_demo/nodes.py",
+              "line": 27,
+              "snippet": "self.create_subscription( LaserScan, \"/scan\", self.receive_scan, qos_profile_sensor_data)"
+            }
+          ],
+          "fact_type": "detected",
+          "file": "scan_demo/scan_demo/nodes.py",
+          "kind": "subscription",
+          "lifecycle": false,
+          "line": 27,
+          "name": "/scan",
+          "qos": {
+            "dynamic": true,
+            "expression": "qos_profile_sensor_data"
+          },
+          "resolved": true,
+          "type": "sensor_msgs/msg/LaserScan"
+        }
+      ],
+      "tf_broadcasters": [],
+      "urdf_files": []
+    }
+  ],
+  "provenance": {
+    "completed_at": "2026-10-18T18:00:50.419157Z",
+    "duration_seconds": 0.005646,
+    "environment": {
+      "architecture": "arm64",
+      "platform": "Darwin",
+      "platform_release": "25.6.0",
+      "python_version": "3.13.6"
+    },
+    "git": {
+      "branch": null,
+      "commit_sha": null,
+      "dirty": null
+    },
+    "input": {
+      "archive_sha256": null,
+      "content_sha256": null,
+      "source_type": "local"
+    },
+    "ros_distribution": null,
+    "started_at": "2026-10-18T18:00:50.413515Z"
+  },
+  "repository": {
+    "name": "ROS 2 scan example",
+    "path": ".",
+    "source": "Bundled controlled example",
+    "source_type": "local"
+  },
+  "scanner": {
+    "fact_model": [
+      "detected",
+      "inferred",
+      "diagnostic"
+    ],
+    "mode": "static",
+    "name": "robot-doctor-static",
+    "version": "0.6.0.dev0"
+  },
+  "schema_version": "1.9.0",
+  "summary": {
+    "actions": 0,
+    "architecture_nodes_total": 4,
+    "diagnostics": {},
+    "launch_files": 1,
+    "node_scopes": {
+      "example": 4,
+      "production": 0,
+      "test": 0
+    },
+    "nodes": 4,
+    "packages": 1,
+    "resolved_entities": 7,
+    "services": 0,
+    "skipped_files": 0,
+    "topics": 1,
+    "unresolved_entities": 0
+  }
+}

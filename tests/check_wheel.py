@@ -21,6 +21,7 @@ def main() -> int:
         "robot_doctor/scanner.py",
         "robot_doctor/overviews.py",
         "robot_doctor/web.py",
+        "robot_doctor/demo.py",
         "robot_doctor/schemas/robot_doctor_config.schema.json",
         "robot_doctor/schemas/robot_doctor_scan.schema.json",
     }

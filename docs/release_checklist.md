@@ -1,5 +1,26 @@
 # Release Checklist
 
+## 2026-10-18 First-Run And Showcase Milestone (0.6.0.dev0)
+
+This is development work on the existing beta, not a new published release or a claim of customer validation.
+
+- [x] Clear first-run value statement, offline example, and local-use explanation.
+- [x] Real controlled RD302 diagnosis, reviewed one-line correction, and independently scanned corrected ZIP.
+- [x] Findings, source evidence, next steps, project titles, and collapsible inventory in the local UI.
+- [x] Standalone HTML/JSON/source showcase, sharing bundle, captioned 70-second screen walkthrough, and transcript.
+- [x] Pilot invitation, observation script, note template, decision criteria, and backlog prepared; no outreach sent.
+- [x] 49 unit tests, including six showcase regressions, pass locally on Python 3.13.6.
+- [x] All seven scoped benchmark groups pass (121 labels); all six pinned repository/workspace regressions pass.
+- [x] Live loopback HTTP smoke checks pass for examples, downloads, ZIP input, filters, input errors, CSRF, and Host validation.
+- [x] GUI example comparison, source-link expansion, file-chooser ZIP scan, keyboard skip-link navigation, and 390 × 844 layout checked in the in-app browser.
+- [x] Static export relative links checked; video duration, decoding, and representative rendered frames verified.
+- [x] Final wheel/source-distribution contents and installed-wheel smoke checks.
+- [ ] Push changes and verify remote CI for this milestone.
+
+Direct `file:` navigation is blocked by the automation browser, so saved-report disk opening was not visually tested there. The local app uses the same renderer. Screen-reader, Safari-launcher, physical robot, and external user evaluations remain open in BACKLOG.md. Public showcase hosting and participant evaluation permission remain founder decisions before outreach.
+
+## Historical v0.5.0 Release
+
 ## Source And Version
 
 - [x] `pyproject.toml` and `robot_doctor.__version__` report `0.5.0`.

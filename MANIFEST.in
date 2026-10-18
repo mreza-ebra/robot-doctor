@@ -2,12 +2,15 @@ include LICENSE
 include README.md
 include CHANGELOG.md
 include SECURITY.md
+include BACKLOG.md
+include tools/build_showcase.py
+include tools/build_walkthrough.py
 include .robot-doctor.example.json
 include .dockerignore
 include Dockerfile
 include compose.yaml
 include start_robot_doctor.command
 include stop_robot_doctor.command
-recursive-include docs *.md
+recursive-include docs *.md *.html *.json *.zip *.png *.mp4 *.srt
 recursive-include schemas *.json
 recursive-include tests *.py *.json *.md *.xml *.yaml *.cpp *.hpp *.msg *.urdf *.xacro CMakeLists.txt setup.py setup.cfg pyproject.toml
