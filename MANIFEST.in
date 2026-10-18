@@ -6,6 +6,7 @@ include BACKLOG.md
 include tools/build_showcase.py
 include tools/build_walkthrough.py
 include tools/run_public_case_study.py
+include tools/run_moveit_case_study.py
 include .robot-doctor.example.json
 include .dockerignore
 include Dockerfile

@@ -2,13 +2,13 @@
 
 Generated and reviewed on 18 October 2026 using the current analyzer. The source example is synthetic and contains a deliberately introduced missing-parameter-file reference. No customer results, time savings, build success, or runtime behavior are claimed.
 
-The showcase now leads with a separate [real public FANUC issue case](public_case/index.html), including a pinned upstream snapshot, a local correction, and full before/after evidence. The video below remains a walkthrough of the controlled synthetic example; it is not footage of the FANUC case. See the [detailed real-case report](public_case/README.md).
+The showcase leads with two real public issues: [FANUC's missing runtime dependency](public_case/index.html) and [MoveIt Resources' external RViz lookup](moveit_case/index.html). Each includes pinned upstream source, a reviewed local correction, full before/after evidence, attribution, and explicit static-verification limits. The MoveIt case is detected without another scanner change and uses existing local presets instead of adding a dependency. See the detailed [FANUC report](public_case/README.md) and [MoveIt report](moveit_case/README.md). The video below remains a walkthrough of the controlled synthetic example; it is not footage of either public case.
 
 ## Open and explore
 
 Download and extract [the complete bundle](../FaciRob_Showcase.zip), then open `showcase/index.html` in your normal browser. Alternatively, open `docs/showcase/index.html` from the repository checkout. All report links are relative and there are no external scripts, fonts, or services. No installation is required to inspect the saved showcase. GitHub's HTML file view displays source rather than running the page.
 
-The local application offers the same example at `/example` after starting `robot-doctor-web`. Evaluating your own project requires the local Python or Docker installation described in the repository README.
+The local application offers the two-case chooser at `/case-studies` and the controlled tutorial at `/example` after starting `robot-doctor-web`. Evaluating your own project requires the local Python or Docker installation described in the repository README.
 
 ## Walkthrough and transcript
 

@@ -26,7 +26,7 @@ from .config import ConfigError, ScanConfig
 from .demo import BROKEN_REFERENCE, FIXED_REFERENCE, LAUNCH_PATH, example_files, example_zip, write_example
 from .intake import DEFAULT_MAX_CHECKOUT_BYTES, IntakeError, clone_git_repository, extract_zip_upload, repository_content_sha256
 from .overviews import basic_document, expert_document, intermediate_document
-from .public_case import ASSET_NAMES, DEPENDENCY, ISSUE_URL, PACKAGE, REPOSITORY_URL, case_directory
+from .public_case import CASES, DEPENDENCY, ISSUE_URL, PACKAGE, REPOSITORY_URL, case_assets, case_directory
 from .scanner import ScanCancelled, scan_repository
 
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
@@ -654,10 +654,11 @@ def home_page(csrf_token: str, error: str | None = None) -> str:
         f"""<p class="eyebrow">ROS 2 project analysis by FaciRob</p>
 <p class="lead">Map your ROS 2 project and inspect potential integration issues—with links to the source. No build or ROS installation required for analysis.</p>
 {error_html}
-<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See a real ROS 2 issue before sharing a project</h2>
-<p>A public FANUC driver issue reports a missing dependency. Follow the captured source evidence, review the local correction, and compare the scans.</p>
-<div class="actions"><a class="button" href="/case-study">View the public issue case study</a><a class="button secondary" href="/example">Explore an example</a><a href="#scan">Scan your project</a></div>
-<p class="muted">Both walkthroughs are available offline once this app is open. No account, repository access, or robot connection needed.</p></section>
+<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See two real ROS 2 issues before sharing a project</h2>
+<p>Compare a missing FANUC runtime dependency with a MoveIt launcher that can use its own RViz files. Follow the source evidence, review each local correction, and compare the scans.</p>
+<div class="actions"><a class="button" href="/case-studies">Explore two public issue case studies</a><a class="button secondary" href="/example">Explore an example</a><a href="#scan">Scan your project</a></div>
+<p><a href="/case-study">FANUC dependency case</a> · <a href="/case-studies/moveit">MoveIt RViz case</a></p>
+<p class="muted">The case studies and controlled tutorial are available offline once this app is open. No account, repository access, or robot connection needed.</p></section>
 <ol class="steps" aria-label="How it works"><li><strong>Choose a project</strong><p>Use an HTTPS Git URL or a repository ZIP.</p></li><li><strong>Inspect the evidence</strong><p>Review important findings and trace them to source files.</p></li><li><strong>Plan your next check</strong><p>Review changes, rescan, then verify behavior separately.</p></li></ol>
 <section id="scan" aria-labelledby="scan-title"><h2 id="scan-title">Scan your ROS 2 repository</h2>
 <p>Start with a public project, or use a ZIP for code that should stay on this computer.</p>
@@ -687,7 +688,47 @@ def example_intro(stage: str, *, broken_href: str = "/example?stage=broken", fix
 <p><strong>Verification boundary:</strong> a rescan checks the source reference. It does not prove build success, message delivery, or hardware operation. Download the project for your own inspection and separate ROS testing.</p></section>'''
 
 
+def public_cases_body(case_hrefs: dict[str, str] | None = None) -> str:
+    hrefs = case_hrefs or {key: f"/case-studies/{key}" for key in CASES}
+    cards = []
+    for key, details in CASES.items():
+        cards.append(f'<section class="panel"><h2>{html.escape(details["title"])}</h2><p>{html.escape(details["description"])}</p><a class="button" href="{html.escape(hrefs[key], quote=True)}">Explore the {"FANUC" if key == "fanuc" else "MoveIt"} case</a></section>')
+    return '<p class="eyebrow">Two public repositories · Two reviewed local corrections</p><p class="lead">Follow real reported ROS 2 problems from source evidence to a local correction and a rescan.</p><p>Both cases use pinned source snapshots and existing public issues. They document static checks; neither demonstrates a successful ROS build, launch, or robot test. No upstream submission or endorsement is implied.</p>' + "".join(cards)
+
+
+def moveit_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
+    asset = lambda name: html.escape(asset_prefix + name, quote=True)
+    revision = html.escape(str(case["revision"]))
+    repository = CASES["moveit"]["repository_url"]
+    before = case["before_summary"]["diagnostics"].get("warning", 0)
+    after = case["after_summary"]["diagnostics"].get("warning", 0)
+    patch = '''- get_package_share_directory("moveit2_tutorials")
++ get_package_share_directory("moveit_resources_panda_moveit_config")
+- "panda_moveit_config_demo.rviz"
++ "moveit.rviz"
+- "panda_moveit_config_demo_empty.rviz"
++ "moveit_empty.rviz"'''
+    return f'''<p class="eyebrow">Public issue · Existing detector · Reviewed local correction</p>
+<p class="lead">The Panda RViz launcher looks for configuration files in <code>moveit2_tutorials</code>. Its own package already ships full and empty RViz configurations.</p>
+<p><a href="{repository}/issues/219">Read upstream issue #219</a> · <a href="{repository}/tree/{revision}">Inspect the pinned source</a></p>
+<p>Issue status was open when checked on 18 October 2026. This saved comparison uses the <code>ros2</code> branch snapshot <code>{revision}</code>; it does not track later upstream changes.</p>
+<ol class="steps"><li><strong>Reported launch failure</strong><p>A user reports PackageNotFoundError for moveit2_tutorials when starting moveit_rviz.launch.py.</p></li><li><strong>Detected without a scanner change</strong><p>The existing RD101 check identifies the external package-share lookup.</p></li><li><strong>Use existing local assets</strong><p>Point the launcher to its own package and its two existing RViz filenames.</p></li></ol>
+<section id="target"><h2>Before the correction: the source-backed finding</h2>{diagnostic_card(case["source_finding"])}</section>
+<section class="panel" id="correction"><h2>The reviewed local correction</h2><p><code>panda_moveit_config/launch/moveit_rviz.launch.py</code></p><pre><code>{html.escape(patch)}</code></pre>
+<p>The analyzer's generic hint suggests declaring the dependency. Source review instead finds the full and empty RViz files already in this package. This correction removes the external lookup and changes three lines; it does not add a dependency or change the manifest.</p>
+<p>This is a reviewed local alternative, not an automatic repair. The pristine checkout is preserved and the correction is applied to a separate copy.</p><div class="actions"><a class="button" href="{asset('fix.patch')}">Inspect the patch</a><a href="{asset('before.html')}">Full scan before</a><a href="{asset('after.html')}">Full scan after</a></div></section>
+<section class="panel assessment" id="verification"><h2>After the correction: the external lookup finding is absent</h2><p><strong>Target finding: 1 → 0.</strong> Full-repository warnings: {before} → {after}. Other diagnostics remain.</p>
+<p>The corrected Python parses successfully. Both local RViz files exist, and the existing CMake rule installs their launch directory. Package dependencies and install rules are unchanged; every unrelated diagnostic is identical.</p>
+<p>The full and tutorial modes still select separate full and empty configurations. These are the package's own presets; they may differ from the tutorial presets previously referenced. Visual behavior has not been compared in RViz.</p>
+<p><strong>Verification boundary:</strong> no ROS build, launch, simulation, or physical robot test was run. The static checks verify the removed external lookup and existing local assets; they do not establish that every cause of the reported launch failure is resolved.</p></section>
+<details><summary>What this case adds to the demo</summary><p>The existing analyzer at commit <code>c89b4e3</code> already detects this issue. No detector rule was added for this repository. This is an issue-guided reproduction, not blind discovery. Unlike the FANUC correction, source review removes an unnecessary external lookup rather than declaring a new dependency. No upstream comment or pull request has been submitted.</p></details>
+<section id="evidence-downloads"><h2>Evidence and reproduction</h2><p class="downloads"><a href="{asset('case.json')}">Case provenance</a><a href="{asset('initial.json')}">Original detector scan</a><a href="{asset('before.json')}">Before correction</a><a href="{asset('after.json')}">After correction</a></p>
+<p>Repeat the comparison with <code>tools/run_moveit_case_study.py</code> and a pristine checkout at the pinned SHA. <a href="{asset('README.md')}">Reproduction instructions</a> and <a href="{asset('THIRD_PARTY_NOTICES.md')}">upstream attribution</a> accompany the evidence.</p></section>'''
+
+
 def public_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
+    if case.get("case_id") == "moveit":
+        return moveit_case_body(case, asset_prefix)
     asset = lambda name: html.escape(asset_prefix + name, quote=True)
     revision = html.escape(str(case["revision"]))
     before = case["before_summary"]["diagnostics"]
@@ -727,7 +768,7 @@ def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", 
             data = json.loads((task.directory / "result.json").read_text(encoding="utf-8"))
             if not task.example_stage:
                 title = project_name(data)
-            body = ('<p><a href="/case-study">See the real public issue case study</a></p>' + example_intro(task.example_stage) if task.example_stage else "") + result_body(
+            body = ('<p><a href="/case-studies">Explore two real public issue case studies</a></p>' + example_intro(task.example_stage) if task.example_stage else "") + result_body(
                 data,
                 f"/tasks/{task.id}/",
                 severity_filter=severity_filter,
@@ -824,16 +865,26 @@ class RequestHandler(BaseHTTPRequestHandler):
         if parsed.path == "/healthz":
             self._bytes(b"ok\n", "text/plain; charset=utf-8")
             return
-        if parsed.path in {"/case-study", "/case-study/", "/case-study/index.html"}:
-            case = json.loads((case_directory() / "case.json").read_text(encoding="utf-8"))
-            self._html(page("A real FANUC driver dependency issue", public_case_body(case, "/case-study/")))
+        if parsed.path in {"/case-studies", "/case-studies/", "/case-studies/index.html"}:
+            self._html(page("Two real ROS 2 issue case studies", public_cases_body()))
             return
-        if parsed.path.startswith("/case-study/"):
-            filename = parsed.path.removeprefix("/case-study/")
-            if filename not in ASSET_NAMES:
+        if parsed.path == "/case-study" or parsed.path.startswith("/case-study/") or parsed.path.startswith("/case-studies/"):
+            parts = parsed.path.strip("/").split("/")
+            case_id = "fanuc" if parts[0] == "case-study" else parts[1]
+            prefix = "/case-study/" if parts[0] == "case-study" else f"/case-studies/{case_id}/"
+            filename = "/".join(parts[1:] if parts[0] == "case-study" else parts[2:])
+            if case_id not in CASES:
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return
-            path = case_directory() / filename
+            if filename in {"", "index.html"}:
+                case = json.loads((case_directory(case_id) / "case.json").read_text(encoding="utf-8"))
+                navigation = '<p><a href="/case-studies">Choose another public issue case</a></p>'
+                self._html(page(CASES[case_id]["page_title"], navigation + public_case_body(case, prefix)))
+                return
+            if filename not in case_assets(case_id):
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
+            path = case_directory(case_id) / filename
             if not path.is_file():
                 self.send_error(HTTPStatus.NOT_FOUND)
                 return

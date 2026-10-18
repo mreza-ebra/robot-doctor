@@ -15,8 +15,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from robot_doctor.demo import example_zip, write_example
 from robot_doctor.scanner import scan_repository
-from robot_doctor.public_case import case_directory
-from robot_doctor.web import example_intro, page, result_body
+from robot_doctor.public_case import CASES, case_directory
+from robot_doctor.web import example_intro, page, public_case_body, public_cases_body, result_body
 
 
 def build_showcase(output: Path) -> dict[str, dict]:
@@ -39,10 +39,16 @@ def build_showcase(output: Path) -> dict[str, dict]:
     fixed_codes = [item["code"] for item in results["fixed"]["diagnostics"]]
     if broken_codes != ["RD302"] or fixed_codes:
         raise RuntimeError(f"example no longer demonstrates the intended single-fault comparison: {broken_codes}, {fixed_codes}")
-    public_case = output / "public_case"
-    shutil.copytree(case_directory(), public_case, dirs_exist_ok=True)
-    introduction = '''<p class="eyebrow">FaciRob · Working product showcase</p>
-<section class="panel assessment"><h2>A real public issue: FANUC driver dependency</h2><p>Inspect an open issue, a pinned upstream snapshot, the improved analyzer finding, and a one-line local correction. This is an issue-guided reproduction with explicit static-verification limits.</p><a class="button" href="public_case/index.html">Explore the public issue case study</a></section>
+    case_hrefs = {}
+    for case_id, case in CASES.items():
+        destination = output / case["showcase_folder"]
+        shutil.copytree(case_directory(case_id), destination, dirs_exist_ok=True)
+        captured = json.loads((destination / "case.json").read_text())
+        navigation = '<p><a href="../index.html">Choose another public issue case</a></p>'
+        (destination / "index.html").write_text(page(case["page_title"], navigation + public_case_body(captured), home_href="../index.html", scan_href="../index.html#try-locally"), encoding="utf-8")
+        case_hrefs[case_id] = case["showcase_folder"] + "/index.html"
+    introduction = public_cases_body(case_hrefs) + '''
+<h2>Controlled tutorial</h2>
 <p class="lead">Trace a ROS 2 integration issue from a launch reference to source evidence, then inspect a corrected scan.</p>
 <p>These reports come from the current Robot Doctor analyzer. Open this folder locally in a browser; no server, account, ROS installation, or repository access is required to explore the saved reports.</p>
 <div class="actions"><a class="button" href="broken.html">Explore the intentional fault</a><a class="button secondary" href="fixed.html">Compare the corrected scan</a></div>
@@ -51,7 +57,7 @@ def build_showcase(output: Path) -> dict[str, dict]:
 <section class="panel" id="try-locally"><h2>Try your own project locally</h2><p>Install the local beta from the repository using Docker or Python. Once it is running, choose a repository ZIP or HTTPS Git URL.</p><pre><code>python3 -m pip install -e .
 robot-doctor-web</code></pre><p>Python 3.10.15 or newer is required. ROS and colcon are not required for static scans. Docker is an alternative installation path. The analyzer does not execute repository code or send ZIP contents to a cloud analysis service.</p><p>The live application offers filters and downloadable reports. Results disappear when the local app closes unless downloaded. Review the repository README and LICENSE before installation or evaluation.</p></section>'''
     if (output / "walkthrough.mp4").is_file():
-        introduction += '''<section class="panel"><h2>Watch the 70-second controlled-example walkthrough</h2><p>Actual interface captures of the synthetic tutorial, edited for pacing, with captions. This is not footage of the FANUC case or a real-time performance benchmark.</p><video controls preload="metadata" style="width:min(100%,540px);height:auto" aria-label="Captioned Robot Doctor controlled-example walkthrough"><source src="walkthrough.mp4" type="video/mp4">Download the MP4 to watch the walkthrough.</video><p><a href="walkthrough.mp4">Download the video</a> · <a href="README.md">Read the transcript and reproduction steps</a></p></section>'''
+        introduction += '''<section class="panel"><h2>Watch the 70-second controlled-example walkthrough</h2><p>Actual interface captures of the synthetic tutorial, edited for pacing, with captions. This is not footage of either public case or a real-time performance benchmark.</p><video controls preload="metadata" style="width:min(100%,540px);height:auto" aria-label="Captioned Robot Doctor controlled-example walkthrough"><source src="walkthrough.mp4" type="video/mp4">Download the MP4 to watch the walkthrough.</video><p><a href="walkthrough.mp4">Download the video</a> · <a href="README.md">Read the transcript and reproduction steps</a></p></section>'''
     (output / "index.html").write_text(page("Understand a ROS 2 project before changing it", introduction, home_href="index.html", scan_href="#try-locally"), encoding="utf-8")
     return results
 

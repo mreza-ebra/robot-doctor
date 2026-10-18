@@ -1,5 +1,17 @@
 # Release Checklist
 
+## 2026-10-18 Two Public Issue Examples (0.6.0.dev0)
+
+- [x] Verify MoveIt Resources #219 is open and pin the current `ros2` revision to `e1657c128ea61621777a041e3783c9c7c93db4ca`.
+- [x] Capture the existing detector's finding without a scanner change; prepare a three-line RViz-path correction in a separate copy, preserving pristine upstream source.
+- [x] Verify patch applicability, Python syntax, both existing local RViz files and their install rule, unchanged manifest, target removal, and identical unrelated diagnostics.
+- [x] Bundle provenance, original/before/after scans, HTML reports, patch, attribution, and upstream license texts.
+- [x] Add a two-case chooser and case-specific routes/downloads to the app and offline showcase; retain original FANUC URLs and add both pinned CI replays.
+- [x] All 57 unit tests pass; both pinned local replays, wheel/sdist contents, installed-wheel offline assets/renderers, live HTTP routes/downloads, and browser chooser/source-evidence/correction checks pass. Regenerate the showcase with both cases, return navigation, and screenshots; validate relative asset/fragment links across the exported HTML.
+- [ ] Push and verify CI for this follow-up.
+
+No upstream submission, ROS build/launch, simulation, physical robot operation, or RViz visual comparison was performed. The local presets can differ from the tutorial presets previously referenced. Detailed evidence is in `docs/case_studies/moveit/README.md`.
+
 ## 2026-10-18 Public Issue Case Study (0.6.0.dev0)
 
 - [x] Verify FANUC driver issue #50 is open and pin the observed current `main` source to `da5db3f611cdc9dffe687e056c4e79bea584bf5c`.

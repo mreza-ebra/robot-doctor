@@ -102,6 +102,10 @@ class ShowcaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             output = Path(temporary)
             module.build_showcase(output)
+            home = (output / "index.html").read_text()
+            for folder in ("public_case", "moveit_case"):
+                self.assertIn(f'href="{folder}/index.html"', home)
+                self.assertIn('href="../index.html">Choose another public issue case', (output / folder / "index.html").read_text())
             for stage in ("broken", "fixed"):
                 rendered = (output / f"{stage}.html").read_text()
                 self.assertIn('href="broken.html"', rendered)
@@ -125,15 +129,18 @@ class ShowcaseTests(unittest.TestCase):
                     self.references.extend(values[key] for key in ("href", "src") if key in values)
 
             documents = {}
-            for document in output.glob("*.html"):
+            for document in output.rglob("*.html"):
                 parsed = Links()
                 parsed.feed(document.read_text())
-                documents[document] = parsed
+                documents[document.resolve()] = parsed
             for document, parsed in documents.items():
                 for reference in parsed.references:
                     url = urlparse(reference)
-                    self.assertFalse(url.scheme, reference)
-                    target = document.parent / unquote(url.path) if url.path else document
+                    if url.scheme:
+                        self.assertEqual(url.scheme, "https", reference)
+                        self.assertEqual(url.netloc, "github.com", reference)
+                        continue
+                    target = (document.parent / unquote(url.path)).resolve() if url.path else document
                     self.assertTrue(target.is_file(), reference)
                     if url.fragment:
                         self.assertIn(url.fragment, documents[target].identifiers, reference)

@@ -5,15 +5,16 @@ import json
 import sys
 import tempfile
 import unittest
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from robot_doctor.config import ScanConfig
-from robot_doctor.public_case import REVISION, case_directory, is_target
+from robot_doctor.public_case import CASES, REVISION, case_assets, case_directory, is_target
 from robot_doctor.scanner import launch_package_share_references, scan_repository
-from robot_doctor.web import home_page, public_case_body
+from robot_doctor.web import home_page, public_case_body, public_cases_body
 
 
 class PublicCaseTests(unittest.TestCase):
@@ -98,6 +99,67 @@ def generate_launch_description():
         self.assertEqual(len(corrected.splitlines()), len(source.splitlines()) + 1)
         with self.assertRaises(ValueError):
             module.corrected_manifest(corrected)
+
+    def test_both_cases_have_distinct_provenance_and_only_target_removed(self):
+        for case_id, details in CASES.items():
+            with self.subTest(case=case_id):
+                assets = case_directory(case_id)
+                self.assertTrue(all((assets / name).is_file() for name in case_assets(case_id)))
+                case, before, after = [json.loads((assets / name).read_text()) for name in ("case.json", "before.json", "after.json")]
+                self.assertEqual(case["repository_url"], details["repository_url"])
+                self.assertEqual(before["provenance"]["git"]["commit_sha"], details["revision"])
+                self.assertEqual(sum(is_target(item, case_id) for item in before["diagnostics"]), 1)
+                self.assertFalse(any(is_target(item, case_id) for item in after["diagnostics"]))
+                signatures = lambda data: Counter(json.dumps(item, sort_keys=True) for item in data["diagnostics"] if not is_target(item, case_id))
+                self.assertEqual(signatures(before), signatures(after))
+                self.assertFalse(case["checks"]["build_run"])
+                self.assertFalse(case["checks"]["ros_runtime_run"])
+        self.assertNotEqual(CASES["fanuc"]["repository_url"], CASES["moveit"]["repository_url"])
+        with self.assertRaises(ValueError):
+            case_directory("../fanuc")
+        with self.assertRaises(ValueError):
+            case_assets("../fanuc")
+
+    def test_case_chooser_and_moveit_explain_the_reviewed_alternative(self):
+        hub = public_cases_body()
+        for key in CASES:
+            self.assertIn(f'/case-studies/{key}', hub)
+        offline = public_cases_body({"fanuc": "public_case/index.html", "moveit": "moveit_case/index.html"})
+        self.assertIn('href="moveit_case/index.html"', offline)
+        case = json.loads((case_directory("moveit") / "case.json").read_text())
+        initial = json.loads((case_directory("moveit") / "initial.json").read_text())
+        self.assertEqual(sum(is_target(item, "moveit") for item in initial["diagnostics"]), 1)
+        body = public_case_body(case, "/case-studies/moveit/")
+        self.assertIn("not an automatic repair", body)
+        self.assertIn("Visual behavior has not been compared", body)
+        self.assertIn("Other diagnostics remain", body)
+        self.assertIn('/case-studies/moveit/fix.patch', body)
+        self.assertTrue(case["checks"]["manifest_unchanged"])
+
+    def test_moveit_patch_requires_both_installed_local_presets(self):
+        spec = importlib.util.spec_from_file_location("moveit_case_runner", ROOT / "tools/run_moveit_case_study.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        source = '\n'.join((
+            'rviz_base = os.path.join(get_package_share_directory("moveit2_tutorials"), "launch")',
+            'rviz_full_config = os.path.join(rviz_base, "panda_moveit_config_demo.rviz")',
+            'rviz_empty_config = os.path.join(rviz_base, "panda_moveit_config_demo_empty.rviz")',
+        ))
+        corrected = module.corrected_launch(source)
+        self.assertNotIn("moveit2_tutorials", corrected)
+        with self.assertRaises(ValueError):
+            module.corrected_launch(corrected)
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "panda_moveit_config"
+            (package / "launch").mkdir(parents=True)
+            (package / "CMakeLists.txt").write_text('install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})')
+            for name in module.RVIZ_FILES:
+                (package / "launch" / name).write_text("Panels: []\n")
+            self.assertEqual(len(module.check_local_rviz_paths(root, corrected)), 2)
+            (package / "launch/moveit_empty.rviz").unlink()
+            with self.assertRaises(ValueError):
+                module.check_local_rviz_paths(root, corrected)
 
 
 if __name__ == "__main__":

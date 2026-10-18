@@ -6,6 +6,8 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 
 ### Added
 
+- A second public issue case from MoveIt Resources #219: the existing detector identifies an external RViz lookup, a reviewed three-line correction uses existing local presets, and pinned before/after scans verify only the target finding disappears. No ROS runtime or upstream acceptance is claimed.
+- A two-case chooser in the app and offline showcase, per-case evidence downloads and attribution, packaging coverage, and CI replays for both public repositories; the original FANUC route remains valid.
 - Public, issue-guided FANUC driver #50 case study with a pinned SHA, original-detector miss, improved before/after scans, reviewed local manifest patch, preserved upstream licenses, offline app view, and a CI replay against the real source.
 - Generic import-aware detection of literal Python ROS package-share lookups, including aliases; conservative handling of dynamic, shadowed, and reassigned names.
 - Dependency remediation now points to the affected package manifest and suggests `exec_depend` when the collected references are launch-only.

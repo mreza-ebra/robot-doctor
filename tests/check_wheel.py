@@ -29,6 +29,13 @@ def main() -> int:
         "robot_doctor/case_studies/fanuc/after.json",
         "robot_doctor/case_studies/fanuc/fix.patch",
         "robot_doctor/case_studies/fanuc/licenses/Apache-2.0.txt",
+        "robot_doctor/case_studies/moveit/case.json",
+        "robot_doctor/case_studies/moveit/before.json",
+        "robot_doctor/case_studies/moveit/after.json",
+        "robot_doctor/case_studies/moveit/initial.json",
+        "robot_doctor/case_studies/moveit/index.html",
+        "robot_doctor/case_studies/moveit/fix.patch",
+        "robot_doctor/case_studies/moveit/licenses/panda-description-Apache-2.0.txt",
         "robot_doctor/schemas/robot_doctor_config.schema.json",
         "robot_doctor/schemas/robot_doctor_scan.schema.json",
     }

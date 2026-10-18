@@ -1,0 +1,112 @@
+{
+  "after_summary": {
+    "actions": 0,
+    "architecture_nodes_total": 23,
+    "diagnostics": {
+      "warning": 1
+    },
+    "launch_files": 4,
+    "node_scopes": {
+      "example": 0,
+      "production": 23,
+      "test": 0
+    },
+    "nodes": 23,
+    "packages": 7,
+    "resolved_entities": 0,
+    "services": 0,
+    "skipped_files": 0,
+    "topics": 0,
+    "unresolved_entities": 0
+  },
+  "before_summary": {
+    "actions": 0,
+    "architecture_nodes_total": 23,
+    "diagnostics": {
+      "warning": 2
+    },
+    "launch_files": 4,
+    "node_scopes": {
+      "example": 0,
+      "production": 23,
+      "test": 0
+    },
+    "nodes": 23,
+    "packages": 7,
+    "resolved_entities": 0,
+    "services": 0,
+    "skipped_files": 0,
+    "topics": 0,
+    "unresolved_entities": 0
+  },
+  "branch_at_capture": "ros2",
+  "captured_at": "2026-10-18T19:36:21.441697+00:00",
+  "case_id": "moveit",
+  "checks": {
+    "both_local_rviz_files_exist": true,
+    "build_run": false,
+    "launch_directory_install_rule_present": true,
+    "launch_python_syntax_valid": true,
+    "manifest_unchanged": true,
+    "only_target_diagnostic_removed": true,
+    "physical_robot_run": false,
+    "ros_runtime_run": false,
+    "upstream_submission": false
+  },
+  "corrected_launch_sha256": "e9d267096000522edb269a6c26d4577d31cdee9cd4124a448d9a83245c1cce65",
+  "dependency": "moveit2_tutorials",
+  "initial_detector_commit": "c89b4e3",
+  "initial_detector_target_count": 1,
+  "issue_state_at_check": "OPEN",
+  "issue_state_checked_on": "2026-10-18",
+  "issue_url": "https://github.com/moveit/moveit_resources/issues/219",
+  "kind": "issue-guided reproduction",
+  "launch_file": "panda_moveit_config/launch/moveit_rviz.launch.py",
+  "original_launch_sha256": "5a750b381c3ecffd9a9f52fdfe809fa434373fe6837e15065abd58fd37df7b52",
+  "package": "moveit_resources_panda_moveit_config",
+  "patch_sha256": "30fc47ea27f9f8db5ded1427391ad1da6e3853265a365274c104b9cadb045118",
+  "repository_url": "https://github.com/moveit/moveit_resources",
+  "revision": "e1657c128ea61621777a041e3783c9c7c93db4ca",
+  "source_finding": {
+    "code": "RD101",
+    "confidence": 0.82,
+    "dependency": "moveit2_tutorials",
+    "deployment_scope": "production",
+    "direct_reference": true,
+    "evidence": [
+      {
+        "extractor": "python_launch_package_share",
+        "file": "panda_moveit_config/launch/moveit_rviz.launch.py",
+        "line": 50,
+        "snippet": "get_package_share_directory(\"moveit2_tutorials\")"
+      }
+    ],
+    "fact_type": "diagnostic",
+    "message": "moveit_resources_panda_moveit_config references 'moveit2_tutorials' but package.xml does not declare it.",
+    "package": "moveit_resources_panda_moveit_config",
+    "remediation": {
+      "commands": [
+        "rosdep check --from-paths src --ignore-src"
+      ],
+      "patch_hint": "<exec_depend>moveit2_tutorials</exec_depend>",
+      "steps": [
+        "Confirm the reference is required at build or runtime.",
+        "Add the dependency to package.xml and run rosdep."
+      ],
+      "suggested_files": [
+        "panda_moveit_config/package.xml",
+        "panda_moveit_config/launch/moveit_rviz.launch.py"
+      ],
+      "summary": "Declare the referenced ROS package dependency or suppress the finding if it is intentionally external."
+    },
+    "severity": "warning",
+    "title": "Likely missing package dependency"
+  },
+  "target_after": 0,
+  "target_before": 1,
+  "target_code": "RD101",
+  "verified_local_rviz_files": [
+    "panda_moveit_config/launch/moveit.rviz",
+    "panda_moveit_config/launch/moveit_empty.rviz"
+  ]
+}

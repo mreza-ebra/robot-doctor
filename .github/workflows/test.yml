@@ -56,6 +56,17 @@ jobs:
 
   public-case:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - case: fanuc
+            repository: FANUC-CORPORATION/fanuc_driver
+            revision: da5db3f611cdc9dffe687e056c4e79bea584bf5c
+            script: run_public_case_study.py
+          - case: moveit
+            repository: moveit/moveit_resources
+            revision: e1657c128ea61621777a041e3783c9c7c93db4ca
+            script: run_moveit_case_study.py
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -65,12 +76,12 @@ jobs:
         run: python -m pip install -e .
       - name: Fetch pinned public issue source
         run: |
-          git init --quiet /tmp/fanuc-public-case
-          git -C /tmp/fanuc-public-case remote add origin https://github.com/FANUC-CORPORATION/fanuc_driver.git
-          git -C /tmp/fanuc-public-case fetch --quiet --depth 1 origin da5db3f611cdc9dffe687e056c4e79bea584bf5c
-          git -C /tmp/fanuc-public-case checkout --quiet --detach FETCH_HEAD
-      - name: Reproduce reported dependency and local correction
-        run: python tools/run_public_case_study.py /tmp/fanuc-public-case --output-dir /tmp/fanuc-case-evidence --initial-report docs/case_studies/fanuc/initial.json
+          git init --quiet /tmp/public-issue-source
+          git -C /tmp/public-issue-source remote add origin https://github.com/${{ matrix.repository }}.git
+          git -C /tmp/public-issue-source fetch --quiet --depth 1 origin ${{ matrix.revision }}
+          git -C /tmp/public-issue-source checkout --quiet --detach FETCH_HEAD
+      - name: Reproduce reported issue and local correction
+        run: python tools/${{ matrix.script }} /tmp/public-issue-source --output-dir /tmp/public-case-evidence --initial-report docs/case_studies/${{ matrix.case }}/initial.json
 
   package:
     runs-on: ubuntu-latest
