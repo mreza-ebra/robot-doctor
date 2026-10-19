@@ -203,6 +203,7 @@ def page(title: str, body: str, *, refresh: int | None = None, home_href: str = 
 <title>{html.escape(title)}</title><style>
 body{{font-family:Inter,ui-sans-serif,system-ui,sans-serif;max-width:1180px;margin:2rem auto;padding:0 1rem;color:#172033;background:#fbfcff}}a{{color:#174bb5}}h1,h2,h3{{line-height:1.2}}fieldset,.panel,.finding{{border:1px solid #ccd4e0;border-radius:12px;padding:1rem;margin:1rem 0;background:white}}input,select,button{{font:inherit;padding:.65rem;margin:.25rem 0}}input[type=text],input[type=url],input[type=password]{{width:min(100%,700px);box-sizing:border-box}}button{{background:#2156d9;color:white;border:0;border-radius:7px;cursor:pointer}}.muted{{color:#596579}}.error{{color:#a21b1b}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:.75rem}}.metric{{border:1px solid #d8dee8;border-radius:10px;padding:.8rem;background:white}}.metric strong{{display:block;font-size:1.65rem}}.badge{{display:inline-block;border-radius:999px;padding:.18rem .55rem;font-size:.78rem;font-weight:700;text-transform:uppercase}}.badge-error{{background:#fee2e2;color:#991b1b}}.badge-warning{{background:#fef3c7;color:#92400e}}.badge-info{{background:#dbeafe;color:#1e40af}}.finding-error{{border-left:5px solid #dc2626}}.finding-warning{{border-left:5px solid #d97706}}.finding-info{{border-left:5px solid #2563eb}}.finding header,.finding>summary{{display:flex;gap:.6rem;align-items:center;flex-wrap:wrap}}.finding h3{{margin:.25rem 0}}.finding ol{{margin-top:.4rem}}.finding-body{{padding-top:.25rem}}.filters{{display:flex;gap:.75rem;align-items:end;flex-wrap:wrap;padding:.75rem;border:1px solid #d8dee8;border-radius:10px;background:#f8fafc}}.filters label{{display:grid;gap:.2rem}}table{{border-collapse:collapse;width:100%;display:block;overflow:auto}}td,th{{border:1px solid #d8dee8;padding:.45rem;text-align:left;vertical-align:top}}th{{background:#f4f6fa}}pre{{white-space:pre-wrap;background:#f1f5f9;padding:.8rem;border-radius:8px;overflow:auto}}code{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}}details{{margin:.65rem 0}}summary{{cursor:pointer;font-weight:650}}.diagram{{width:100%;height:auto;border:1px solid #d8dee8;border-radius:12px;background:white}}.downloads{{display:flex;gap:.8rem;flex-wrap:wrap}}progress{{width:min(100%,700px);height:1.2rem}}@media(max-width:650px){{body{{margin:1rem auto}}.finding{{padding:.75rem}}}}
 .eyebrow{{font-size:.8rem;font-weight:750;letter-spacing:.08em;text-transform:uppercase;color:#174bb5}}.lead{{font-size:1.18rem;line-height:1.6;max-width:760px}}.actions{{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin:1.25rem 0}}.button{{display:inline-block;background:#2156d9;color:white;text-decoration:none;border:1px solid #2156d9;border-radius:7px;padding:.7rem 1rem;font-weight:650}}.button.secondary{{background:white;color:#174bb5}}.steps{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem;padding:0;list-style-position:inside}}.steps li{{padding:1rem;border:1px solid #d8dee8;border-radius:10px;background:white;line-height:1.5}}.steps p{{margin:.5rem 0 0}}.assessment{{border-left:5px solid #2156d9;background:#f0f5ff}}.assessment h2{{margin-top:0}}.count-row{{display:flex;gap:1.25rem;flex-wrap:wrap}}.count-row strong{{font-size:1.3rem}}.section-nav{{display:flex;flex-wrap:wrap;gap:.8rem;margin:1rem 0 1.5rem}}.source-line{{display:block;white-space:pre-wrap;overflow-wrap:anywhere}}.source-line:target{{background:#fef3c7;outline:2px solid #92400e}}.source-link{{overflow-wrap:anywhere}}.example-notice{{border-left:5px solid #92400e}}.stage-current{{font-weight:750;text-decoration:underline;text-underline-offset:5px}}.brand{{display:flex;gap:1rem;justify-content:space-between;align-items:center;border-bottom:1px solid #d8dee8;padding-bottom:1rem;margin-bottom:1.5rem}}.brand a{{text-decoration:none;font-weight:700}}.skip{{position:absolute;left:-10000px}}.skip:focus{{left:1rem;top:1rem;background:white;padding:1rem;z-index:10}}:focus-visible{{outline:3px solid #174bb5;outline-offset:4px}}section{{scroll-margin-top:1rem}}h1{{font-size:clamp(1.8rem,4vw,2.5rem)}}p,li{{line-height:1.55}}td{{overflow-wrap:anywhere}}summary{{padding:.3rem 0}}@media(max-width:650px){{.steps{{grid-template-columns:1fr}}.grid{{grid-template-columns:repeat(2,minmax(0,1fr))}}.brand{{align-items:flex-start}}.actions .button{{text-align:center}}}}
+.case-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:1rem}}.case-grid .panel{{display:flex;flex-direction:column;margin:.5rem 0}}.case-grid .panel h2{{font-size:1.3rem}}.case-grid .panel .button{{margin-top:auto;align-self:flex-start}}
 </style></head><body><a class="skip" href="#main">Skip to content</a><header class="brand"><a href="{html.escape(home_href, quote=True)}">FaciRob · Robot Doctor</a><a href="{html.escape(scan_href, quote=True)}">Scan your project</a></header><main id="main"><h1>{html.escape(title)}</h1>{body}</main></body></html>"""
 
 
@@ -322,7 +323,7 @@ def metric_cards(summary: dict[str, Any]) -> str:
     return cards + f'<p class="muted"><strong>Active node scopes:</strong> {html.escape(scope_text)}</p>'
 
 
-def diagnostic_card(item: dict[str, Any]) -> str:
+def diagnostic_card(item: dict[str, Any], *, expanded: bool = False) -> str:
     severity = str(item.get("severity") or "info")
     remediation = item.get("remediation") or {}
     steps = "".join(f"<li>{html.escape(str(step))}</li>" for step in remediation.get("steps", []))
@@ -363,7 +364,7 @@ def diagnostic_card(item: dict[str, Any]) -> str:
     )
     title = html.escape(str(item.get("title") or "Finding"))
     if severity == "info":
-        return f'<details class="finding finding-info"><summary>{badge}{metadata}<span>{title}</span></summary>{content}</details>'
+        return f'<details class="finding finding-info"{" open" if expanded else ""}><summary>{badge}{metadata}<span>{title}</span></summary>{content}</details>'
     return f'<article class="finding finding-{html.escape(severity)}"><header>{badge}{metadata}</header><h3>{title}</h3>{content}</article>'
 
 
@@ -654,10 +655,10 @@ def home_page(csrf_token: str, error: str | None = None) -> str:
         f"""<p class="eyebrow">ROS 2 project analysis by FaciRob</p>
 <p class="lead">Map your ROS 2 project and inspect potential integration issues—with links to the source. No build or ROS installation required for analysis.</p>
 {error_html}
-<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See two real ROS 2 issues before sharing a project</h2>
-<p>Compare a missing FANUC runtime dependency with a MoveIt launcher that can use its own RViz files. Follow the source evidence, review each local correction, and compare the scans.</p>
-<div class="actions"><a class="button" href="/case-studies">Explore two public issue case studies</a><a class="button secondary" href="/example">Explore an example</a><a href="#scan">Scan your project</a></div>
-<p><a href="/case-study">FANUC dependency case</a> · <a href="/case-studies/moveit">MoveIt RViz case</a></p>
+<section class="panel assessment" aria-labelledby="example-title"><h2 id="example-title">See three real ROS 2 issues before sharing a project</h2>
+<p>Compare FANUC's missing dependency, MoveIt's RViz lookup, and TurtleBot3's standalone launch argument. Follow the source evidence, review each local correction, and compare the scans.</p>
+<div class="actions"><a class="button" href="/case-studies">Explore three public issue case studies</a><a class="button secondary" href="/example">Explore an example</a><a href="#scan">Scan your project</a></div>
+<p><a href="/case-study">FANUC dependency case</a> · <a href="/case-studies/moveit">MoveIt RViz case</a> · <a href="/case-studies/turtlebot3">TurtleBot3 launch case</a></p>
 <p class="muted">The case studies and controlled tutorial are available offline once this app is open. No account, repository access, or robot connection needed.</p></section>
 <ol class="steps" aria-label="How it works"><li><strong>Choose a project</strong><p>Use an HTTPS Git URL or a repository ZIP.</p></li><li><strong>Inspect the evidence</strong><p>Review important findings and trace them to source files.</p></li><li><strong>Plan your next check</strong><p>Review changes, rescan, then verify behavior separately.</p></li></ol>
 <section id="scan" aria-labelledby="scan-title"><h2 id="scan-title">Scan your ROS 2 repository</h2>
@@ -692,8 +693,31 @@ def public_cases_body(case_hrefs: dict[str, str] | None = None) -> str:
     hrefs = case_hrefs or {key: f"/case-studies/{key}" for key in CASES}
     cards = []
     for key, details in CASES.items():
-        cards.append(f'<section class="panel"><h2>{html.escape(details["title"])}</h2><p>{html.escape(details["description"])}</p><a class="button" href="{html.escape(hrefs[key], quote=True)}">Explore the {"FANUC" if key == "fanuc" else "MoveIt"} case</a></section>')
-    return '<p class="eyebrow">Two public repositories · Two reviewed local corrections</p><p class="lead">Follow real reported ROS 2 problems from source evidence to a local correction and a rescan.</p><p>Both cases use pinned source snapshots and existing public issues. They document static checks; neither demonstrates a successful ROS build, launch, or robot test. No upstream submission or endorsement is implied.</p>' + "".join(cards)
+        cards.append(f'<section class="panel"><h2>{html.escape(details["title"])}</h2><p>{html.escape(details["description"])}</p><a class="button" href="{html.escape(hrefs[key], quote=True)}">Explore the {html.escape(details["label"])} case</a></section>')
+    return f'<p class="eyebrow">{len(CASES)} public repositories · {len(CASES)} reviewed local corrections</p><p class="lead">Follow real reported ROS 2 problems from source evidence to a local correction and a rescan.</p><p>These cases use pinned source snapshots and existing public issues. They document static checks; successful ROS builds, launches, and robot tests have not been demonstrated. No upstream submission or endorsement is implied.</p><div class="case-grid">' + "".join(cards) + '</div>'
+
+
+def turtlebot3_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
+    asset = lambda name: html.escape(asset_prefix + name, quote=True)
+    revision = html.escape(str(case["revision"]))
+    repository = CASES["turtlebot3"]["repository_url"]
+    before = case["before_summary"]["diagnostics"].get("info", 0)
+    after = case["after_summary"]["diagnostics"].get("info", 0)
+    patch = "- namespace = LaunchConfiguration('namespace')\n+ namespace = LaunchConfiguration('namespace', default='')\n\n+ DeclareLaunchArgument(\n+     'namespace',\n+     default_value='',\n+     description='Robot namespace'),"
+    return f'''<p class="eyebrow">TurtleBot3 · Public launch issue · Reviewed local correction</p>
+<p class="lead">The state-publisher launcher reads <code>namespace</code> without a local declaration or default. The reported direct launch fails unless an external caller supplies that value.</p>
+<p><a href="{repository}/issues/1149">Read upstream issue #1149</a> · <a href="{repository}/tree/{revision}">Inspect the pinned source</a> · <a href="{repository}/pull/1150">Existing upstream proposed fix #1150</a></p>
+<p>TurtleBot3 is ROBOTIS's mobile-robot platform. At capture its public repository had {case["adoption"]["stars"]:,} stars and {case["adoption"]["forks"]:,} forks. These are public interest signals, not clone counts or customer validation.</p>
+<p>The issue and existing proposed fix were open when checked on 18 October 2026. This comparison uses current <code>main</code> snapshot <code>{revision}</code>; it does not track later changes. The issue reporter already described the cause and proposed correction.</p>
+<ol class="steps"><li><strong>Reported standalone failure</strong><p>Direct launch reports that the namespace configuration does not exist.</p></li><li><strong>Check local argument requirements</strong><p>RD304 identifies a literal configuration with no local declaration, assignment, or substitution default.</p></li><li><strong>Declare an empty default</strong><p>Add the namespace argument and default while retaining the same named substitution for caller overrides.</p></li></ol>
+<section id="target"><h2>Before the correction: the source-backed finding</h2><p>This check is informational: included launch files may intentionally inherit values from a parent. Source review and the existing issue establish why standalone use matters here.</p>{diagnostic_card(case["source_finding"], expanded=True)}</section>
+<section class="panel" id="correction"><h2>The reviewed local correction</h2><p><code>turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py</code></p><pre><code>{html.escape(patch)}</code></pre>
+<p>The empty default permits an omitted namespace, and the declaration exposes it as a launch argument. The substitution still uses the name <code>namespace</code> so a caller can provide a value such as <code>tb1</code>. This is a local reproduction of the already proposed upstream approach.</p><div class="actions"><a class="button" href="{asset('fix.patch')}">Inspect the patch</a><a href="{asset('before.html')}">Full scan before</a><a href="{asset('after.html')}">Full scan after</a></div></section>
+<section class="panel assessment" id="verification"><h2>After the correction: the local requirement finding is absent</h2><p><strong>Target finding: 1 → 0.</strong> Informational findings: {before} → {after}. Other diagnostics remain, including an unrelated error; the repository is not declared healthy.</p>
+<p>The corrected file parses as Python. AST checks verify the empty substitution default, namespace declaration, and unchanged named binding for overrides. Only this launch file changes, and every unrelated diagnostic is identical.</p>
+<p><strong>Verification boundary:</strong> no ROS build, launch, simulation, or physical robot test was run. The <code>TURTLEBOT3_MODEL</code> environment variable is still required. Omitted and explicit namespace values still need separate ROS launch tests.</p></section>
+<details><summary>How the analyzer improved for this case</summary><p>The original detector at <code>48cb3c1</code> missed this condition. The generic RD304 check recognizes imported Python LaunchConfiguration calls with literal names, without executing them. Declarations, local assignments through SetLaunchConfiguration, and substitution defaults prevent a finding; dynamic or shadowed APIs are handled conservatively. No TurtleBot3 names were added to detector rules. This is an issue-guided reproduction, not blind discovery.</p></details>
+<section id="evidence-downloads"><h2>Evidence and reproduction</h2><p class="downloads"><a href="{asset('case.json')}">Case provenance</a><a href="{asset('initial.json')}">Original detector scan</a><a href="{asset('before.json')}">Improved detector: before</a><a href="{asset('after.json')}">Improved detector: after</a></p><p>Repeat with <code>tools/run_turtlebot3_case_study.py</code> and the pinned source. <a href="{asset('README.md')}">Reproduction instructions</a> · <a href="{asset('THIRD_PARTY_NOTICES.md')}">Upstream attribution</a> · <a href="{asset('licenses/Apache-2.0.txt')}">Apache-2.0 license</a>. No upstream comment or pull request has been submitted by this work.</p></section>'''
 
 
 def moveit_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
@@ -727,6 +751,8 @@ def moveit_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
 
 
 def public_case_body(case: dict[str, Any], asset_prefix: str = "") -> str:
+    if case.get("case_id") == "turtlebot3":
+        return turtlebot3_case_body(case, asset_prefix)
     if case.get("case_id") == "moveit":
         return moveit_case_body(case, asset_prefix)
     asset = lambda name: html.escape(asset_prefix + name, quote=True)
@@ -768,7 +794,7 @@ def task_page(task: ScanTask, csrf_token: str, *, severity_filter: str = "all", 
             data = json.loads((task.directory / "result.json").read_text(encoding="utf-8"))
             if not task.example_stage:
                 title = project_name(data)
-            body = ('<p><a href="/case-studies">Explore two real public issue case studies</a></p>' + example_intro(task.example_stage) if task.example_stage else "") + result_body(
+            body = ('<p><a href="/case-studies">Explore real public issue case studies</a></p>' + example_intro(task.example_stage) if task.example_stage else "") + result_body(
                 data,
                 f"/tasks/{task.id}/",
                 severity_filter=severity_filter,
@@ -866,7 +892,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._bytes(b"ok\n", "text/plain; charset=utf-8")
             return
         if parsed.path in {"/case-studies", "/case-studies/", "/case-studies/index.html"}:
-            self._html(page("Two real ROS 2 issue case studies", public_cases_body()))
+            self._html(page(f"{len(CASES)} real ROS 2 issue case studies", public_cases_body()))
             return
         if parsed.path == "/case-study" or parsed.path.startswith("/case-study/") or parsed.path.startswith("/case-studies/"):
             parts = parsed.path.strip("/").split("/")

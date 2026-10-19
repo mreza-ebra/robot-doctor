@@ -1797,17 +1797,8 @@ def parameter_references(node: ast.AST | None, constants: dict[str, Any]) -> lis
     return results
 
 
-def launch_package_share_references(path: Path, root: Path) -> dict[str, list[dict[str, Any]]]:
-    """Collect literal package-share lookups without evaluating launch code.
-
-    Import qualification avoids treating an unrelated function with the same name
-    as a ROS lookup. Dynamic arguments remain unknown rather than dependencies.
-    """
-    text = read_text(path)
-    try:
-        tree = ast.parse(text, filename=relative(path, root))
-    except SyntaxError:
-        return {}
+def python_import_bindings(tree: ast.Module) -> tuple[dict[str, str], set[str]]:
+    """Resolve top-level imports conservatively when bindings are shadowed."""
     aliases: dict[str, str] = {}
     for node in tree.body:
         if isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
@@ -1820,6 +1811,24 @@ def launch_package_share_references(path: Path, root: Path) -> dict[str, list[di
     shadowed = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)}
     shadowed.update(node.arg for node in ast.walk(tree) if isinstance(node, ast.arg))
     shadowed.update(node.name for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)))
+    return aliases, shadowed
+
+
+def imported_call_name(node: ast.Call, aliases: dict[str, str], shadowed: set[str]) -> str:
+    first, _, suffix = call_name(node.func).partition(".")
+    if first in shadowed or first not in aliases:
+        return ""
+    return aliases[first] + ("." + suffix if suffix else "")
+
+
+def launch_package_share_references(path: Path, root: Path) -> dict[str, list[dict[str, Any]]]:
+    """Collect import-qualified literal package-share lookups without execution."""
+    text = read_text(path)
+    try:
+        tree = ast.parse(text, filename=relative(path, root))
+    except SyntaxError:
+        return {}
+    aliases, shadowed = python_import_bindings(tree)
     apis = {
         "launch_ros.substitutions.FindPackageShare",
         "ament_index_python.packages.get_package_share_directory",
@@ -1829,17 +1838,46 @@ def launch_package_share_references(path: Path, root: Path) -> dict[str, list[di
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        name = call_name(node.func)
-        first, _, suffix = name.partition(".")
-        if first in shadowed:
-            continue
-        qualified = aliases.get(first, first) + ("." + suffix if suffix else "")
+        qualified = imported_call_name(node, aliases, shadowed)
         if qualified not in apis:
             continue
         argument = node.args[0] if node.args else keyword_node(node, "package_name") or keyword_node(node, "package")
         if isinstance(argument, ast.Constant) and isinstance(argument.value, str) and re.fullmatch(r"[a-z][a-z0-9_]*", argument.value):
             references[argument.value].append(evidence(relative(path, root), node.lineno, "python_launch_package_share", source_segment(text, node)))
     return dict(references)
+
+
+def launch_configuration_requirements(tree: ast.Module, text: str, rel_file: str) -> list[dict[str, Any]]:
+    """Find literal substitutions needing context outside this Python file.
+
+    This is informational: a parent or command-line argument can supply a value.
+    It does not establish action ordering, reachability, or a deployment failure.
+    """
+    aliases, shadowed = python_import_bindings(tree)
+    supplied: set[str] = set()
+    references: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        qualified = imported_call_name(node, aliases, shadowed)
+        argument = node.args[0] if node.args else keyword_node(node, "variable_name") or keyword_node(node, "name")
+        literal = argument.value if isinstance(argument, ast.Constant) and isinstance(argument.value, str) else None
+        if qualified in {"launch.actions.DeclareLaunchArgument", "launch.actions.SetLaunchConfiguration"}:
+            if literal is None:
+                return []  # A dynamic declaration might supply any referenced name.
+            supplied.add(literal)
+        elif qualified == "launch.substitutions.LaunchConfiguration" and literal:
+            if len(node.args) > 1 or any(isinstance(arg, ast.Starred) for arg in node.args) or any(item.arg is None for item in node.keywords):
+                continue
+            default = keyword_node(node, "default")
+            if default is None or (isinstance(default, ast.Constant) and default.value is None):
+                references[literal].append(evidence(rel_file, node.lineno, "python_launch_configuration", source_segment(text, node)))
+    return [diagnostic(
+        "RD304", "info", "Launch configuration requires external context",
+        f"Launch configuration '{name}' has no local declaration, assignment, or substitution default in this file. A parent launch or command-line value may supply it; direct launch requires review.",
+        references[name], 0.8, launch_file=rel_file, launch_configuration=name,
+        deployment_scope=evidence_deployment_scope(references[name], ""),
+    ) for name in sorted(references.keys() - supplied)]
 
 
 def scan_launch_python(path: Path, root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
@@ -1920,7 +1958,7 @@ def scan_launch_python(path: Path, root: Path) -> tuple[list[dict[str, Any]], li
         elif short in {"PushRosNamespace", "SetRemap"}:
             value, confidence, dynamic = launch_expression(node.args[0] if node.args else None, constants)
             actions.append({"kind": "namespace" if short == "PushRosNamespace" else "remap", "value": value, "source_file": rel_file, "line": node.lineno, "fact_type": "detected", "confidence": confidence, "resolved": not dynamic, "evidence": [evidence(rel_file, node.lineno, "python_launch_ast", source_segment(text, node))]})
-    return actions, includes, arguments, []
+    return actions, includes, arguments, launch_configuration_requirements(tree, text, rel_file)
 
 
 def xml_tag(element: ET.Element) -> str:
@@ -2570,6 +2608,12 @@ def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], cont
             ["ros2 pkg executables <package>", "colcon build --packages-select <package>"],
             None,
         ),
+        "RD304": (
+            "Review the launch entry point and either declare the argument, provide a safe default, or document the caller-supplied value.",
+            ["Check whether this file is intended to run directly or only through a parent launch.", "For standalone use, declare the argument with an appropriate default; preserve explicit caller overrides."],
+            ["ros2 launch <package> <launch-file> --show-args"],
+            "DeclareLaunchArgument('<launch-configuration>', default_value='<reviewed-default>')",
+        ),
         "RD401": (
             "Give the TF child frame exactly one parent in each robot model.",
             ["Inspect the reported URDF joints.", "Remove or rename the duplicate parent relationship."],
@@ -2613,6 +2657,9 @@ def diagnostic_remediation(code: str, evidence_items: list[dict[str, Any]], cont
         "<launch-file>": context.get("launch_file"),
         "<path>": suggested_files[0] if suggested_files else None,
     }
+    if code == "RD304":
+        substitutions["<launch-file>"] = Path(str(context["launch_file"])).name
+        patch_hint = patch_hint.replace("<launch-configuration>", str(context["launch_configuration"]))
     resolved_commands = []
     for command in commands:
         if "<interface-type>" in command:
@@ -3921,6 +3968,10 @@ def _scan_repository(root: Path) -> dict[str, Any]:
         report = report_by_path.get(package["path"]) if package else None
         if any(path.name.endswith(suffix) for suffix in LAUNCH_SUFFIXES) and report:
             actions, includes, arguments, issues = scan_launch_file(path, root)
+            for issue in issues:
+                if issue["code"] == "RD304":
+                    issue["package"] = package["name"]
+                    issue["remediation"] = diagnostic_remediation("RD304", issue["evidence"], issue)
             initial_diagnostics.extend(issues)
             for include in includes:
                 resolved, exists = resolve_repository_reference(include.get("target"), include["source_file"], root, packages, scan_files)

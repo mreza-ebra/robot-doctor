@@ -100,7 +100,7 @@ def generate_launch_description():
         with self.assertRaises(ValueError):
             module.corrected_manifest(corrected)
 
-    def test_both_cases_have_distinct_provenance_and_only_target_removed(self):
+    def test_all_cases_have_distinct_provenance_and_only_target_removed(self):
         for case_id, details in CASES.items():
             with self.subTest(case=case_id):
                 assets = case_directory(case_id)
@@ -114,7 +114,7 @@ def generate_launch_description():
                 self.assertEqual(signatures(before), signatures(after))
                 self.assertFalse(case["checks"]["build_run"])
                 self.assertFalse(case["checks"]["ros_runtime_run"])
-        self.assertNotEqual(CASES["fanuc"]["repository_url"], CASES["moveit"]["repository_url"])
+        self.assertEqual(len({details["repository_url"] for details in CASES.values()}), len(CASES))
         with self.assertRaises(ValueError):
             case_directory("../fanuc")
         with self.assertRaises(ValueError):
@@ -124,7 +124,7 @@ def generate_launch_description():
         hub = public_cases_body()
         for key in CASES:
             self.assertIn(f'/case-studies/{key}', hub)
-        offline = public_cases_body({"fanuc": "public_case/index.html", "moveit": "moveit_case/index.html"})
+        offline = public_cases_body({key: value["showcase_folder"] + "/index.html" for key, value in CASES.items()})
         self.assertIn('href="moveit_case/index.html"', offline)
         case = json.loads((case_directory("moveit") / "case.json").read_text())
         initial = json.loads((case_directory("moveit") / "initial.json").read_text())
@@ -160,6 +160,89 @@ def generate_launch_description():
             (package / "launch/moveit_empty.rviz").unlink()
             with self.assertRaises(ValueError):
                 module.check_local_rviz_paths(root, corrected)
+
+    def test_launch_context_requirement_is_informational_and_actionable(self):
+        source = 'from launch.substitutions import LaunchConfiguration as Config\nx=Config("target_frame")\n'
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_package(root, source)
+            findings = [item for item in scan_repository(root)["diagnostics"] if item["code"] == "RD304"]
+            self.assertEqual(len(findings), 1)
+            finding = findings[0]
+            self.assertEqual(finding["severity"], "info")
+            self.assertEqual(finding["launch_configuration"], "target_frame")
+            self.assertEqual(finding["package"], "consumer")
+            self.assertIn("A parent launch", finding["message"])
+            self.assertEqual(finding["remediation"]["commands"], ["ros2 launch consumer entry.launch.py --show-args"])
+            self.assertIn("target_frame", finding["remediation"]["patch_hint"])
+            self.assertEqual(finding["evidence"][0]["extractor"], "python_launch_configuration")
+
+    def test_launch_context_defaults_declarations_and_assignments(self):
+        variants = (
+            'from launch.substitutions import LaunchConfiguration\nx=LaunchConfiguration("frame", default="")',
+            'from launch.substitutions import LaunchConfiguration\nfrom launch.actions import DeclareLaunchArgument\nx=LaunchConfiguration("frame")\ny=DeclareLaunchArgument("frame")',
+            'import launch.substitutions as subs\nfrom launch.actions import SetLaunchConfiguration as Set\nx=subs.LaunchConfiguration("frame")\ny=Set("frame", "map")',
+            'from launch.substitutions import LaunchConfiguration\nfrom launch.actions import DeclareLaunchArgument\nx=LaunchConfiguration("frame")\ny=DeclareLaunchArgument(dynamic_name)',
+        )
+        for source in variants:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                self.make_package(root, source)
+                self.assertFalse(any(item["code"] == "RD304" for item in scan_repository(root)["diagnostics"]))
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_package(root, 'import launch.substitutions as subs\nx=subs.LaunchConfiguration("frame", default=None)')
+            self.assertTrue(any(item["code"] == "RD304" for item in scan_repository(root)["diagnostics"]))
+
+    def test_launch_context_unknown_and_shadowed_calls_are_not_asserted(self):
+        variants = (
+            'def LaunchConfiguration(name): return name\nx=LaunchConfiguration("frame")',
+            'from launch.substitutions import LaunchConfiguration\ndef helper(LaunchConfiguration): return LaunchConfiguration("frame")',
+            'from launch.substitutions import LaunchConfiguration\nx=LaunchConfiguration(dynamic_name)',
+            'from launch.substitutions import LaunchConfiguration\nx=LaunchConfiguration("frame", **options)',
+            'from launch.substitutions import LaunchConfiguration\nLaunchConfiguration=lambda name:name\nx=LaunchConfiguration("frame")',
+        )
+        for source in variants:
+            with self.subTest(source=source), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                self.make_package(root, source)
+                self.assertFalse(any(item["code"] == "RD304" for item in scan_repository(root)["diagnostics"]))
+
+    def test_launch_context_requirement_obeys_existing_policy_controls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_package(root, 'from launch.substitutions import LaunchConfiguration\nx=LaunchConfiguration("frame")')
+            suppressed = scan_repository(root, config=ScanConfig(suppress_diagnostics=frozenset({"RD304"})))
+            self.assertFalse(any(item["code"] == "RD304" for item in suppressed["diagnostics"]))
+            raised = scan_repository(root, config=ScanConfig(severity_overrides={"RD304": "warning"}))
+            self.assertEqual([item["severity"] for item in raised["diagnostics"] if item["code"] == "RD304"], ["warning"])
+
+    def test_turtlebot3_snapshot_discloses_initial_miss_and_existing_upstream_fix(self):
+        assets = case_directory("turtlebot3")
+        case = json.loads((assets / "case.json").read_text())
+        initial = json.loads((assets / "initial.json").read_text())
+        self.assertFalse(any(is_target(item, "turtlebot3") for item in initial["diagnostics"]))
+        self.assertEqual(case["source_finding"]["severity"], "info")
+        self.assertIsNone(case["adoption"]["clone_count"])
+        self.assertTrue(case["checks"]["named_override_binding_preserved"])
+        body = public_case_body(case)
+        self.assertIn("Existing upstream proposed fix #1150", body)
+        self.assertIn("original detector", body)
+        self.assertIn("including an unrelated error", body)
+        self.assertIn("still required", body)
+        self.assertIn('class="finding finding-info" open', body)
+
+    def test_turtlebot3_patch_preserves_named_override_binding(self):
+        spec = importlib.util.spec_from_file_location("turtlebot3_case_runner", ROOT / "tools/run_turtlebot3_case_study.py")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        source = "def generate_launch_description():\n    namespace = LaunchConfiguration('namespace')\n    return LaunchDescription([\n    ])\n"
+        corrected = module.corrected_launch(source)
+        module.check_namespace_contract(corrected)
+        with self.assertRaises(ValueError):
+            module.corrected_launch(corrected)
+        with self.assertRaises(ValueError):
+            module.check_namespace_contract(corrected.replace("namespace = LaunchConfiguration", "wrong = LaunchConfiguration"))
 
 
 if __name__ == "__main__":

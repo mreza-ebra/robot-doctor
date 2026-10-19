@@ -6,6 +6,8 @@ All notable changes to Robot Doctor are documented here. Versions follow Semanti
 
 ### Added
 
+- Third public issue case from ROBOTIS TurtleBot3 #1149, with pinned source, original detector miss, local namespace default/declaration patch, existing upstream proposal attribution, public stars/forks capture, and CI replay. No public clone counts or ROS runtime verification are claimed.
+- Generic import-aware RD304 informational check for Python launch configurations requiring external context; local declarations, assignments, defaults, and uncertain/dynamic bindings are handled conservatively. The three-case app/showcase chooser uses responsive cards and retains earlier routes.
 - A second public issue case from MoveIt Resources #219: the existing detector identifies an external RViz lookup, a reviewed three-line correction uses existing local presets, and pinned before/after scans verify only the target finding disappears. No ROS runtime or upstream acceptance is claimed.
 - A two-case chooser in the app and offline showcase, per-case evidence downloads and attribution, packaging coverage, and CI replays for both public repositories; the original FANUC route remains valid.
 - Public, issue-guided FANUC driver #50 case study with a pinned SHA, original-detector miss, improved before/after scans, reviewed local manifest patch, preserved upstream licenses, offline app view, and a CI replay against the real source.

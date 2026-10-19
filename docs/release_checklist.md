@@ -1,5 +1,16 @@
 # Release Checklist
 
+## 2026-10-19 Third Public Issue Example (0.6.0.dev0)
+
+- [x] Capture TurtleBot3 main revision `fc817ce3073af1d6032397c64504134882af5e9a`, open issue #1149 and existing open proposed fix #1150, and public adoption signals (2,078 stars / 1,188 forks; no clone counts).
+- [x] Preserve the initial detector miss and add generic import-aware RD304 informational detection for launch configuration requirements; distinguish intended parent context from standalone use.
+- [x] Prepare a separate namespace declaration/default correction; verify patch applicability, Python syntax, empty defaults and retained named binding, target removal, and identical unrelated diagnostics.
+- [x] Bundle original/before/after evidence, patch, attribution and exact license; add a responsive three-case chooser and pinned CI replay while retaining existing URLs.
+- [x] All 63 unit tests, 121 benchmark labels, and six repository/workspace regressions pass. All three local replays, wheel/sdist checks, installed-wheel module/asset comparison, live HTTP routes/downloads, browser chooser/evidence/correction checks, 815 offline asset/fragment links, and TurtleBot3 JSON schema validation pass. Regenerate the bundle with the final case pages and screenshots.
+- [ ] Push and verify CI for this follow-up.
+
+The TurtleBot3 approach was already proposed upstream by the reporter. This work makes no upstream submission and runs no ROS build/launch, simulation, or robot test. Other diagnostics, including an unrelated error, remain in its scan. The repository remains dependent on `TURTLEBOT3_MODEL`. Details: `docs/case_studies/turtlebot3/README.md`.
+
 ## 2026-10-18 Two Public Issue Examples (0.6.0.dev0)
 
 - [x] Verify MoveIt Resources #219 is open and pin the current `ros2` revision to `e1657c128ea61621777a041e3783c9c7c93db4ca`.

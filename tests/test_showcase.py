@@ -103,7 +103,7 @@ class ShowcaseTests(unittest.TestCase):
             output = Path(temporary)
             module.build_showcase(output)
             home = (output / "index.html").read_text()
-            for folder in ("public_case", "moveit_case"):
+            for folder in ("public_case", "moveit_case", "turtlebot3_case"):
                 self.assertIn(f'href="{folder}/index.html"', home)
                 self.assertIn('href="../index.html">Choose another public issue case', (output / folder / "index.html").read_text())
             for stage in ("broken", "fixed"):

@@ -975,8 +975,8 @@
     }
   ],
   "provenance": {
-    "completed_at": "2026-10-18T19:38:13.076492Z",
-    "duration_seconds": 0.005823,
+    "completed_at": "2026-10-19T17:39:54.684866Z",
+    "duration_seconds": 0.005562,
     "environment": {
       "architecture": "arm64",
       "platform": "Darwin",
@@ -994,7 +994,7 @@
       "source_type": "local"
     },
     "ros_distribution": null,
-    "started_at": "2026-10-18T19:38:13.070673Z"
+    "started_at": "2026-10-19T17:39:54.679304Z"
   },
   "repository": {
     "name": "ROS 2 scan example",

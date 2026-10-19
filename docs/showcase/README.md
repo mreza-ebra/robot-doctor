@@ -2,13 +2,13 @@
 
 Generated and reviewed on 18 October 2026 using the current analyzer. The source example is synthetic and contains a deliberately introduced missing-parameter-file reference. No customer results, time savings, build success, or runtime behavior are claimed.
 
-The showcase leads with two real public issues: [FANUC's missing runtime dependency](public_case/index.html) and [MoveIt Resources' external RViz lookup](moveit_case/index.html). Each includes pinned upstream source, a reviewed local correction, full before/after evidence, attribution, and explicit static-verification limits. The MoveIt case is detected without another scanner change and uses existing local presets instead of adding a dependency. See the detailed [FANUC report](public_case/README.md) and [MoveIt report](moveit_case/README.md). The video below remains a walkthrough of the controlled synthetic example; it is not footage of either public case.
+The showcase leads with three real public issues: [FANUC's missing dependency](public_case/index.html), [MoveIt's external RViz lookup](moveit_case/index.html), and [TurtleBot3's standalone namespace argument](turtlebot3_case/index.html). Each includes pinned source, a reviewed local correction, before/after evidence, attribution, and static-verification limits. TurtleBot3 documents an initial detector miss and new informational launch-context check, and credits the reporter's existing upstream proposal. See the detailed [FANUC](public_case/README.md), [MoveIt](moveit_case/README.md), and [TurtleBot3](turtlebot3_case/README.md) reports. The video remains a controlled synthetic tutorial, not footage of the public cases.
 
 ## Open and explore
 
 Download and extract [the complete bundle](../FaciRob_Showcase.zip), then open `showcase/index.html` in your normal browser. Alternatively, open `docs/showcase/index.html` from the repository checkout. All report links are relative and there are no external scripts, fonts, or services. No installation is required to inspect the saved showcase. GitHub's HTML file view displays source rather than running the page.
 
-The local application offers the two-case chooser at `/case-studies` and the controlled tutorial at `/example` after starting `robot-doctor-web`. Evaluating your own project requires the local Python or Docker installation described in the repository README.
+The local application offers the three-case chooser at `/case-studies` and the controlled tutorial at `/example` after starting `robot-doctor-web`. Evaluating your own project requires the local Python or Docker installation described in the repository README.
 
 ## Walkthrough and transcript
 

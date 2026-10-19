@@ -1,0 +1,120 @@
+{
+  "adoption": {
+    "checked_on": "2026-10-18",
+    "clone_count": null,
+    "forks": 1188,
+    "source": "https://api.github.com/repos/ROBOTIS-GIT/turtlebot3",
+    "stars": 2078
+  },
+  "after_summary": {
+    "actions": 1,
+    "architecture_nodes_total": 29,
+    "diagnostics": {
+      "error": 1,
+      "info": 5,
+      "warning": 4
+    },
+    "launch_files": 7,
+    "node_scopes": {
+      "example": 6,
+      "production": 23,
+      "test": 0
+    },
+    "nodes": 29,
+    "packages": 8,
+    "resolved_entities": 57,
+    "services": 1,
+    "skipped_files": 0,
+    "topics": 5,
+    "unresolved_entities": 13
+  },
+  "before_summary": {
+    "actions": 1,
+    "architecture_nodes_total": 29,
+    "diagnostics": {
+      "error": 1,
+      "info": 6,
+      "warning": 4
+    },
+    "launch_files": 7,
+    "node_scopes": {
+      "example": 6,
+      "production": 23,
+      "test": 0
+    },
+    "nodes": 29,
+    "packages": 8,
+    "resolved_entities": 57,
+    "services": 1,
+    "skipped_files": 0,
+    "topics": 5,
+    "unresolved_entities": 13
+  },
+  "branch_at_capture": "main",
+  "captured_at": "2026-10-19T17:38:26.360576+00:00",
+  "case_id": "turtlebot3",
+  "checks": {
+    "build_run": false,
+    "launch_python_syntax_valid": true,
+    "named_override_binding_preserved": true,
+    "namespace_declaration_default_empty": true,
+    "namespace_default_empty": true,
+    "only_target_diagnostic_removed": true,
+    "physical_robot_run": false,
+    "ros_runtime_run": false,
+    "upstream_submission": false
+  },
+  "corrected_launch_sha256": "2315078efe42b3dfb625b62e78d843c7515de01fc202cf7c4772428f4466fd29",
+  "existing_upstream_pr_state_at_check": "OPEN",
+  "existing_upstream_pr_url": "https://github.com/ROBOTIS-GIT/turtlebot3/pull/1150",
+  "initial_detector_commit": "48cb3c1",
+  "initial_detector_target_count": 0,
+  "issue_state_at_check": "OPEN",
+  "issue_state_checked_on": "2026-10-18",
+  "issue_url": "https://github.com/ROBOTIS-GIT/turtlebot3/issues/1149",
+  "kind": "issue-guided reproduction",
+  "launch_configuration": "namespace",
+  "launch_file": "turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py",
+  "original_launch_sha256": "4f25b293fd83fc5d4bb4e43f1dcd097552740405b1778d356c02a772229a3821",
+  "package": "turtlebot3_bringup",
+  "patch_sha256": "5e3c68e527d604b231340bb06a4af52532cb4244cf73f037c28aaf12d983702f",
+  "repository_url": "https://github.com/ROBOTIS-GIT/turtlebot3",
+  "revision": "fc817ce3073af1d6032397c64504134882af5e9a",
+  "source_finding": {
+    "code": "RD304",
+    "confidence": 0.8,
+    "deployment_scope": "production",
+    "evidence": [
+      {
+        "extractor": "python_launch_configuration",
+        "file": "turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py",
+        "line": 33,
+        "snippet": "LaunchConfiguration('namespace')"
+      }
+    ],
+    "fact_type": "diagnostic",
+    "launch_configuration": "namespace",
+    "launch_file": "turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py",
+    "message": "Launch configuration 'namespace' has no local declaration, assignment, or substitution default in this file. A parent launch or command-line value may supply it; direct launch requires review.",
+    "package": "turtlebot3_bringup",
+    "remediation": {
+      "commands": [
+        "ros2 launch turtlebot3_bringup turtlebot3_state_publisher.launch.py --show-args"
+      ],
+      "patch_hint": "DeclareLaunchArgument('namespace', default_value='<reviewed-default>')",
+      "steps": [
+        "Check whether this file is intended to run directly or only through a parent launch.",
+        "For standalone use, declare the argument with an appropriate default; preserve explicit caller overrides."
+      ],
+      "suggested_files": [
+        "turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py"
+      ],
+      "summary": "Review the launch entry point and either declare the argument, provide a safe default, or document the caller-supplied value."
+    },
+    "severity": "info",
+    "title": "Launch configuration requires external context"
+  },
+  "target_after": 0,
+  "target_before": 1,
+  "target_code": "RD304"
+}

@@ -36,6 +36,7 @@ def main() -> int:
     assert "/case-studies" in home and "/case-studies/moveit" in home
     chooser = request("/case-studies")[0].decode()
     assert "/case-studies/fanuc" in chooser and "/case-studies/moveit" in chooser
+    assert "/case-studies/turtlebot3" in chooser and "TurtleBot3" in chooser
     case_body = request("/case-study")[0].decode()
     assert "RD101" in case_body and "fanuc_hardware_interface" in case_body
     case = json.loads(request("/case-study/case.json")[0])
@@ -45,15 +46,17 @@ def main() -> int:
     assert b"+  <exec_depend>fanuc_hardware_interface</exec_depend>" in request("/case-study/fix.patch")[0]
     assert request("/case-study/licenses/Apache-2.0.txt")[0]
     status("/case-study/../SECURITY.md", 404)
-    for case_id in ("fanuc", "moveit"):
+    for case_id in ("fanuc", "moveit", "turtlebot3"):
         prefix = f"/case-studies/{case_id}"
         body = request(prefix)[0].decode()
-        assert "Choose another public issue case" in body and "RD101" in body
+        assert "Choose another public issue case" in body and ("RD304" if case_id == "turtlebot3" else "RD101") in body
         case = json.loads(request(prefix + "/case.json")[0])
         assert case["target_before"] == 1 and case["target_after"] == 0
         for filename in ("before.html", "after.html", "before.json", "after.json", "initial.json", "fix.patch"):
             assert request(prefix + "/" + filename)[0]
     assert b'+    rviz_full_config = os.path.join(rviz_base, "moveit.rviz")' in request("/case-studies/moveit/fix.patch")[0]
+    assert b"LaunchConfiguration('namespace', default='')" in request("/case-studies/turtlebot3/fix.patch")[0]
+    assert request("/case-studies/turtlebot3/licenses/Apache-2.0.txt")[0]
     status("/case-studies/unknown", 404)
     status("/case-studies/moveit/../fanuc/case.json", 404)
     status("/case-studies/moveit/licenses/../../SECURITY.md", 404)

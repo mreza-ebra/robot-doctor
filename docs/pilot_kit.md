@@ -10,9 +10,10 @@ Ask for a 20-minute session on a public repository or a project the participant 
 
 ## Materials to send once outreach is authorized
 
-- `docs/showcase/index.html`: entry point, now leading with two real public issues from FANUC and MoveIt Resources. Share the whole showcase folder or its ZIP so relative links work.
+- `docs/showcase/index.html`: entry point, now leading with three real public issues from FANUC, MoveIt Resources, and ROBOTIS TurtleBot3. Share the whole showcase folder or its ZIP so relative links work.
 - `docs/case_studies/fanuc/README.md`: provenance, original-detector miss, generic improvement, local correction, and static verification limits for upstream issue #50. Do not imply FANUC endorsement, upstream acceptance, or a verified runtime repair.
 - `docs/case_studies/moveit/README.md`: existing detector finding and reviewed alternative for MoveIt Resources #219; the three-line correction selects local RViz presets, which still need ROS/RViz verification.
+- `docs/case_studies/turtlebot3/README.md`: initial miss, generic informational launch-context check, and local reproduction of the already proposed namespace declaration/default fix for #1149. Public stars/forks are not clone counts or customer validation.
 - `docs/showcase/walkthrough.mp4`: optional controlled-example screen walkthrough, with a transcript in `docs/showcase/README.md`; this video is not footage of either public case.
 - `docs/showcase/broken.zip` and `fixed.zip`: reproducible synthetic projects. Only the launch filename reference differs.
 - README installation instructions and SECURITY.md local deployment boundary.
@@ -27,7 +28,7 @@ Hi [Name],
 
 I saw your work on [specific project or integration]. I'm developing FaciRob, a local tool that maps ROS 2 repositories and flags potential integration issues with source evidence, without building the project.
 
-I've included two existing public ROS 2 issues: a missing runtime dependency in the FANUC driver and an external RViz lookup in MoveIt Resources. Each includes source evidence, a reviewed local correction, and before/after scans. The cases explain what was verified statically and what still needs a ROS runtime check.
+I've included three existing public ROS 2 issues: a missing dependency in FANUC, an external RViz lookup in MoveIt, and a standalone launch argument in TurtleBot3. Each includes source evidence, a reviewed local correction, and before/after scans. The cases explain what was verified statically and what still needs a ROS runtime check.
 
 I'm looking for three robotics engineers to evaluate it on a project they know. We can start with a public repository, or I can help you run it locally without giving me private source access. You would get an architecture report and a joint review of any relevant findings.
 

@@ -67,6 +67,10 @@ jobs:
             repository: moveit/moveit_resources
             revision: e1657c128ea61621777a041e3783c9c7c93db4ca
             script: run_moveit_case_study.py
+          - case: turtlebot3
+            repository: ROBOTIS-GIT/turtlebot3
+            revision: fc817ce3073af1d6032397c64504134882af5e9a
+            script: run_turtlebot3_case_study.py
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

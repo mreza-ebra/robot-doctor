@@ -1,0 +1,22 @@
+--- a/turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py
++++ b/turtlebot3_bringup/launch/turtlebot3_state_publisher.launch.py
+@@ -30,7 +30,7 @@
+ def generate_launch_description():
+     TURTLEBOT3_MODEL = os.environ['TURTLEBOT3_MODEL']
+ 
+-    namespace = LaunchConfiguration('namespace')
++    namespace = LaunchConfiguration('namespace', default='')
+ 
+     use_sim_time = LaunchConfiguration('use_sim_time', default='false')
+     urdf_file_name = 'turtlebot3_' + TURTLEBOT3_MODEL + '.urdf'
+@@ -58,6 +58,10 @@
+ 
+     return LaunchDescription([
+         DeclareLaunchArgument(
++            'namespace',
++            default_value='',
++            description='Robot namespace'),
++        DeclareLaunchArgument(
+             'use_sim_time',
+             default_value='false',
+             description='Use simulation (Gazebo) clock if true'),

@@ -22,6 +22,8 @@ Updated 18 October 2026. Checked items are implemented or internally verified; t
 
 - [x] Reproduce a real open public ROS 2 issue: FANUC driver #50 at pinned SHA `da5db3f`; improve the generic detector, prepare a local correction, retain before/after evidence, and document static verification limits.
 - [x] Add a second real repository: MoveIt Resources #219 at pinned SHA `e1657c1`; use the existing detector, review a correction to local RViz assets, retain original/before/after scans, and provide a two-case demo chooser and CI replays.
+- [x] Add a third recognized public repository: ROBOTIS TurtleBot3 #1149 at `fc817ce`; retain the initial miss, add generic informational launch-context detection, reproduce the existing upstream namespace correction locally, and include it in the three-case demo and CI replay.
+- [ ] Verify TurtleBot3 standalone and parent launches in ROS, with omitted namespace and `namespace:=tb1`; `TURTLEBOT3_MODEL` remains required. No upstream submission is needed for reproduction; the reporter already opened PR #1150.
 - [ ] Verify the MoveIt local RViz presets in ROS/RViz, including full and tutorial modes; static asset/install checks do not establish visual equivalence or successful launch.
 - [ ] Submit the FANUC patch upstream only if explicitly requested; no issue comment or PR has been sent.
 
