@@ -7,7 +7,7 @@
 - [x] Prepare a separate namespace declaration/default correction; verify patch applicability, Python syntax, empty defaults and retained named binding, target removal, and identical unrelated diagnostics.
 - [x] Bundle original/before/after evidence, patch, attribution and exact license; add a responsive three-case chooser and pinned CI replay while retaining existing URLs.
 - [x] All 63 unit tests, 121 benchmark labels, and six repository/workspace regressions pass. All three local replays, wheel/sdist checks, installed-wheel module/asset comparison, live HTTP routes/downloads, browser chooser/evidence/correction checks, 815 offline asset/fragment links, and TurtleBot3 JSON schema validation pass. Regenerate the bundle with the final case pages and screenshots.
-- [ ] Push and verify CI for this follow-up.
+- [x] Push implementation `8e28505` and verify [GitHub Actions run 39296234962](https://github.com/mreza-ebra/robot-doctor/actions/runs/39296234962): all nine jobs pass, including independent FANUC/MoveIt/TurtleBot3 replays, Python 3.10.15/3.13 units, repository regressions/benchmark, packaging, live Git intake, and container/HTTP checks.
 
 The TurtleBot3 approach was already proposed upstream by the reporter. This work makes no upstream submission and runs no ROS build/launch, simulation, or robot test. Other diagnostics, including an unrelated error, remain in its scan. The repository remains dependent on `TURTLEBOT3_MODEL`. Details: `docs/case_studies/turtlebot3/README.md`.
 
